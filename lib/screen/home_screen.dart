@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:web/model/course_model.dart';
-import 'package:web/screen/study_screen.dart';
-import 'package:web/screen/studycource_screen.dart';
-import 'package:web/service/study_api.dart';
-import 'package:web/widget/new_widget/coursestepcard_widget.dart';
-import 'package:web/widget/new_widget/review_widget.dart';
-import 'package:web/widget/new_widget/stetscard_widget.dart';
-import 'package:web/widget/sidebar_widget.dart';
+import 'package:sign_web/model/course_model.dart';
+import 'package:sign_web/screen/study_screen.dart';
+import 'package:sign_web/screen/studycource_screen.dart';
+import 'package:sign_web/service/study_api.dart';
+import 'package:sign_web/widget/new_widget/coursestepcard_widget.dart';
+import 'package:sign_web/widget/new_widget/review_widget.dart';
+import 'package:sign_web/widget/new_widget/stetscard_widget.dart';
+import 'package:sign_web/widget/sidebar_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

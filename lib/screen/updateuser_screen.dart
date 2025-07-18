@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:web/service/token_storage.dart';
-import 'package:web/service/user_update_api.dart';
-import 'package:web/widget/textbox_widget.dart';
+import 'package:sign_web/service/token_storage.dart';
+import 'package:sign_web/service/user_update_api.dart';
+import 'package:sign_web/widget/textbox_widget.dart';
 
 class UpdateUserScreen extends StatefulWidget {
   const UpdateUserScreen({super.key});

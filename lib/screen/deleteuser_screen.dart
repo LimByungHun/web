@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
-import 'package:web/model/course_model.dart';
-import 'package:web/screen/login_screen.dart';
-import 'package:web/service/delete_user_api.dart';
-import 'package:web/service/token_storage.dart';
+import 'package:sign_web/model/course_model.dart';
+import 'package:sign_web/screen/login_screen.dart';
+import 'package:sign_web/service/delete_user_api.dart';
+import 'package:sign_web/service/token_storage.dart';
 
 class DeleteUserScreen extends StatefulWidget {
   const DeleteUserScreen({super.key});

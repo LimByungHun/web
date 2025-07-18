@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:video_player/video_player.dart';
-import 'package:web/screen/study_screen.dart';
-import 'package:web/service/study_api.dart';
-import 'package:web/widget/camera_widget.dart';
+import 'package:sign_web/screen/study_screen.dart';
+import 'package:sign_web/service/study_api.dart';
+import 'package:sign_web/widget/camera_widget.dart';
 
 class GenericStudyWidget extends StatefulWidget {
   final List<String> items;
@@ -42,7 +42,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
     videoplayer =
         VideoPlayerController.networkUrl(
             Uri.parse(
-              'http://10.101.170.63/video/${Uri.encodeComponent(item)}.mp4',
+              'http://10.101.168.10/video/${Uri.encodeComponent(item)}.mp4',
             ),
           )
           ..setLooping(true)

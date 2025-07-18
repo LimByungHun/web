@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:web/model/course_model.dart';
-import 'package:web/screen/home_screen.dart';
-import 'package:web/screen/login_screen.dart';
-import 'package:web/service/auto_login_api.dart';
-import 'package:web/service/token_storage.dart';
+import 'package:sign_web/model/course_model.dart';
+import 'package:sign_web/screen/home_screen.dart';
+import 'package:sign_web/screen/login_screen.dart';
+import 'package:sign_web/service/auto_login_api.dart';
+import 'package:sign_web/service/token_storage.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

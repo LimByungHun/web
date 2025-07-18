@@ -10,8 +10,8 @@ import 'package:permission_handler/permission_handler.dart';
 // import 'package:sign_language/widget/camera_widget.dart';
 import 'package:video_player/video_player.dart';
 import 'package:image/image.dart' as img;
-import 'package:web/service/translate_api.dart';
-import 'package:web/widget/sidebar_widget.dart';
+import 'package:sign_web/service/translate_api.dart';
+import 'package:sign_web/widget/sidebar_widget.dart';
 
 class TranslateScreen extends StatefulWidget {
   const TranslateScreen({super.key});

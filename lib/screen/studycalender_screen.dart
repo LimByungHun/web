@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:table_calendar/table_calendar.dart';
-import 'package:web/service/calendar_api.dart';
-import 'package:web/widget/sidebar_widget.dart';
+import 'package:sign_web/service/calendar_api.dart';
+import 'package:sign_web/widget/sidebar_widget.dart';
 
 class StudycalenderScreen extends StatefulWidget {
   const StudycalenderScreen({super.key});

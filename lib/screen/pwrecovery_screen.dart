@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:web/screen/login_screen.dart';
-import 'package:web/service/reset_password_api.dart';
-import 'package:web/widget/button_widget.dart';
-import 'package:web/widget/textbox_widget.dart';
+import 'package:sign_web/screen/login_screen.dart';
+import 'package:sign_web/service/reset_password_api.dart';
+import 'package:sign_web/widget/button_widget.dart';
+import 'package:sign_web/widget/textbox_widget.dart';
 
 class PwrecoveryScreen extends StatefulWidget {
   const PwrecoveryScreen({super.key});

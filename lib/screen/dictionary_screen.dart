@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:video_player/video_player.dart';
-import 'package:web/service/bookmark_api.dart';
-import 'package:web/service/word_detail_api.dart';
-import 'package:web/widget/indexbar.dart';
-import 'package:web/widget/sidebar_widget.dart';
-import 'package:web/widget/word_title.dart';
+import 'package:sign_web/service/bookmark_api.dart';
+import 'package:sign_web/service/word_detail_api.dart';
+import 'package:sign_web/widget/indexbar.dart';
+import 'package:sign_web/widget/sidebar_widget.dart';
+import 'package:sign_web/widget/word_title.dart';
 
 class Dictionary extends StatefulWidget {
   final List<String> words;
@@ -158,7 +158,7 @@ class DictionaryState extends State<Dictionary> {
       controller =
           VideoPlayerController.networkUrl(
               Uri.parse(
-                'http://10.101.170.63/video/${Uri.encodeComponent(word)}.mp4',
+                'http://10.101.168.10/video/${Uri.encodeComponent(word)}.mp4',
               ),
             )
             ..setLooping(true)
