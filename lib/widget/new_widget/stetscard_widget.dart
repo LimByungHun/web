@@ -38,7 +38,7 @@ class StetscardWidget extends StatelessWidget {
                   valueColor: const AlwaysStoppedAnimation(Colors.purple),
                 ),
                 Text(
-                  '${(percent * 100).round()}%',
+                  '${(percent).round()}%',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
