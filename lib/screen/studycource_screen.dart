@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
-import 'package:web/model/course_model.dart';
-import 'package:web/service/study_api.dart';
-import 'package:web/widget/button_widget.dart';
-import 'package:web/widget/choice_widget.dart';
-import 'package:web/widget/sidebar_widget.dart';
+import 'package:sign_web/model/course_model.dart';
+import 'package:sign_web/service/study_api.dart';
+import 'package:sign_web/widget/button_widget.dart';
+import 'package:sign_web/widget/choice_widget.dart';
+import 'package:sign_web/widget/sidebar_widget.dart';
 
 class StudycourceScreen extends StatefulWidget {
   const StudycourceScreen({super.key});

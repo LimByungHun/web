@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
-import 'package:web/model/course_model.dart';
-import 'package:web/service/study_api.dart';
+import 'package:sign_web/model/course_model.dart';
+import 'package:sign_web/service/study_api.dart';
 
 class GenericQuizWidget extends StatefulWidget {
   final List<Map<String, dynamic>> words;
@@ -57,7 +57,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
 
     // videoplayer?.dispose();
     // videoplayer = VideoPlayerController.networkUrl(
-    //   Uri.parse('http://10.101.170.63/video/${Uri.encodeComponent(correct)}.mp4'),
+    //   Uri.parse('http://10.101.168.10/video/${Uri.encodeComponent(correct)}.mp4'),
     // )
     //   ..setLooping(true)
     //   ..setPlaybackSpeed(1.0)

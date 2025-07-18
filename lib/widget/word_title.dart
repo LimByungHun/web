@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:web/service/bookmark_api.dart';
+import 'package:sign_web/service/bookmark_api.dart';
 
 class WordTile extends StatelessWidget {
   final String word;

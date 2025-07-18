@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:web/screen/bookmark_screen.dart';
-import 'package:web/screen/dictionary_screen.dart';
-import 'package:web/screen/home_screen.dart';
-import 'package:web/screen/studycalender_screen.dart';
-import 'package:web/screen/studycource_screen.dart';
-import 'package:web/screen/translate_screen.dart';
-import 'package:web/screen/user_screen.dart';
-import 'package:web/service/dictionary_api.dart';
-import 'package:web/service/token_storage.dart';
+import 'package:sign_web/screen/bookmark_screen.dart';
+import 'package:sign_web/screen/dictionary_screen.dart';
+import 'package:sign_web/screen/home_screen.dart';
+import 'package:sign_web/screen/studycalender_screen.dart';
+import 'package:sign_web/screen/studycource_screen.dart';
+import 'package:sign_web/screen/translate_screen.dart';
+import 'package:sign_web/screen/user_screen.dart';
+import 'package:sign_web/service/dictionary_api.dart';
+import 'package:sign_web/service/token_storage.dart';
 
 class Sidebar extends StatefulWidget {
   final int? initialIndex;

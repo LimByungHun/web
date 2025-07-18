@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:web/screen/deleteuser_screen.dart';
-import 'package:web/screen/login_screen.dart';
-import 'package:web/screen/updateuser_screen.dart';
-import 'package:web/service/logout_api.dart';
-import 'package:web/service/token_storage.dart';
-import 'package:web/widget/button_widget.dart';
-import 'package:web/widget/check_widget.dart';
-import 'package:web/widget/sidebar_widget.dart';
+import 'package:sign_web/screen/deleteuser_screen.dart';
+import 'package:sign_web/screen/login_screen.dart';
+import 'package:sign_web/screen/updateuser_screen.dart';
+import 'package:sign_web/service/logout_api.dart';
+import 'package:sign_web/service/token_storage.dart';
+import 'package:sign_web/widget/button_widget.dart';
+import 'package:sign_web/widget/check_widget.dart';
+import 'package:sign_web/widget/sidebar_widget.dart';
 
 class UserScreen extends StatefulWidget {
   const UserScreen({super.key});

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:web/screen/home_screen.dart';
-import 'package:web/screen/insertuser_screen.dart';
-import 'package:web/screen/pwrecovery_screen.dart';
-import 'package:web/service/login_api.dart';
-import 'package:web/service/token_storage.dart';
-import 'package:web/widget/button_widget.dart';
-import 'package:web/widget/textbox_widget.dart';
+import 'package:sign_web/screen/home_screen.dart';
+import 'package:sign_web/screen/insertuser_screen.dart';
+import 'package:sign_web/screen/pwrecovery_screen.dart';
+import 'package:sign_web/service/login_api.dart';
+import 'package:sign_web/service/token_storage.dart';
+import 'package:sign_web/widget/button_widget.dart';
+import 'package:sign_web/widget/textbox_widget.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

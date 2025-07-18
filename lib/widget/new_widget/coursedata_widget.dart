@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:web/screen/study_screen.dart';
+import 'package:sign_web/screen/study_screen.dart';
 
 class CourcedataWidget extends StatelessWidget {
   final String courseName;
