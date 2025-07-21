@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:sign_web/screen/home_screen.dart';
-import 'package:sign_web/screen/insertuser_screen.dart';
-import 'package:sign_web/screen/pwrecovery_screen.dart';
+import 'package:go_router/go_router.dart';
+import 'package:sign_web/main.dart';
 import 'package:sign_web/service/login_api.dart';
 import 'package:sign_web/service/token_storage.dart';
 import 'package:sign_web/widget/button_widget.dart';
@@ -32,14 +31,14 @@ class LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
             child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 400),
+              constraints: const BoxConstraints(maxWidth: 400),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Center(
+                  const Center(
                     child: Text(
                       '제목',
                       style: TextStyle(
@@ -49,8 +48,8 @@ class LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-                  SizedBox(height: 30),
-                  /*로그인 비밀번호 텍스트 박스*/
+                  const SizedBox(height: 30),
+                  // 아이디, 비밀번호 입력
                   Textbox(controller: idController, hintText: '아이디'),
                   Textbox(
                     controller: pwController,
@@ -58,7 +57,9 @@ class LoginScreenState extends State<LoginScreen> {
                     obscureText: true,
                   ),
 
-                  /*로그인, 회원가입 버튼*/
+                  const SizedBox(height: 16),
+
+                  // 로그인 & 회원가입 버튼
                   Align(
                     alignment: Alignment.centerRight,
                     child: Row(
@@ -87,15 +88,12 @@ class LoginScreenState extends State<LoginScreen> {
                                   userID: result.userID!,
                                   nickname: result.nickname!,
                                 );
+                                loginState.value = true;
+
                                 if (!mounted) return;
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => HomeScreen(),
-                                  ),
-                                );
+
+                                context.go('/home');
                               } else {
-                                if (!mounted) return;
                                 Fluttertoast.showToast(
                                   msg:
                                       result.error ??
@@ -109,17 +107,13 @@ class LoginScreenState extends State<LoginScreen> {
                             selected: true,
                           ),
                         ),
+                        const SizedBox(width: 12),
                         SizedBox(
                           width: 120,
                           child: ButtonWidget(
                             text: '회원가입',
                             onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => InsertuserScreen(),
-                                ),
-                              );
+                              context.push('/insert');
                             },
                             selected: false,
                           ),
@@ -127,16 +121,15 @@ class LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                   ),
-                  /* 여기에 자동 로그인 추가 하면 될듯?*/
-                  Text('비밀번호를 잊어버리셨나요?'),
+
+                  const SizedBox(height: 16),
+
+                  const Text('비밀번호를 잊어버리셨나요?'),
                   GestureDetector(
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => PwrecoveryScreen()),
-                      );
+                      context.push('/pwrecovery');
                     },
-                    child: Text(
+                    child: const Text(
                       '비밀번호 찾기',
                       style: TextStyle(
                         fontSize: 14,
