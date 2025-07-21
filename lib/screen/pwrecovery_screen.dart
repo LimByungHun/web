@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:sign_web/screen/login_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'package:sign_web/service/reset_password_api.dart';
 import 'package:sign_web/widget/button_widget.dart';
 import 'package:sign_web/widget/textbox_widget.dart';
@@ -131,10 +131,7 @@ class PwrecoveryScreenState extends State<PwrecoveryScreen> {
                               backgroundColor: Colors.green,
                               textColor: Colors.white,
                             );
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => LoginScreen()),
-                            );
+                            context.go('/');
                           } else {
                             Fluttertoast.showToast(
                               msg: "비밀번호 재설정 실패",

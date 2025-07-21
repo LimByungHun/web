@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:sign_web/service/token_storage.dart';
 
-const String baseUrl = 'http://10.101.168.10';
+const String baseUrl = 'http://10.101.170.168';
 
 class WordDetailApi {
   static Future<Map<String, dynamic>> fetch({required int wid}) async {

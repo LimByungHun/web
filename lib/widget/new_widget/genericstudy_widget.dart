@@ -42,7 +42,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
     videoplayer =
         VideoPlayerController.networkUrl(
             Uri.parse(
-              'http://10.101.168.10/video/${Uri.encodeComponent(item)}.mp4',
+              'http://10.101.170.168/video/${Uri.encodeComponent(item)}.mp4',
             ),
           )
           ..setLooping(true)

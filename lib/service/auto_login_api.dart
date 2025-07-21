@@ -1,13 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-const String baseUrl = 'http://10.101.168.10';
+const String baseUrl = 'http://10.101.170.168';
 
 class AutoLoginApi {
   static Future<bool> autoLogin(String refreshToken) async {
     try {
       final url = Uri.parse('$baseUrl/user/auto_login');
-
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},

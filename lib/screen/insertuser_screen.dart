@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:sign_web/screen/login_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'package:sign_web/service/signup_api.dart';
 import 'package:sign_web/widget/button_widget.dart';
 import 'package:sign_web/widget/textbox_widget.dart';
@@ -144,12 +144,7 @@ class InsertuserScreenState extends State<InsertuserScreen> {
                               backgroundColor: Colors.green,
                               textColor: Colors.white,
                             );
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => LoginScreen(),
-                              ),
-                            );
+                            context.go('/');
                           } else {
                             Fluttertoast.showToast(
                               msg: result['message'] ?? '회원가입 실패',

@@ -1,12 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:sign_web/screen/bookmark_screen.dart';
-import 'package:sign_web/screen/dictionary_screen.dart';
-import 'package:sign_web/screen/home_screen.dart';
-import 'package:sign_web/screen/studycalender_screen.dart';
-import 'package:sign_web/screen/studycource_screen.dart';
-import 'package:sign_web/screen/translate_screen.dart';
-import 'package:sign_web/screen/user_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'package:sign_web/service/dictionary_api.dart';
 import 'package:sign_web/service/token_storage.dart';
 
@@ -21,7 +15,6 @@ class Sidebar extends StatefulWidget {
 class SidebarState extends State<Sidebar> {
   bool isExtended = false;
   int selectedIndex = 0;
-  Set<String> bookmarked = {};
 
   @override
   void initState() {
@@ -29,26 +22,15 @@ class SidebarState extends State<Sidebar> {
     selectedIndex = widget.initialIndex ?? 0;
   }
 
-  Widget screenForIndex(int idx) {
-    switch (idx) {
-      case 0:
-        return HomeScreen();
-      case 1:
-        return StudycalenderScreen();
-      case 2:
-        return Dictionary(words: [], wordIdMap: {}, userID: '');
-      case 3:
-        return TranslateScreen();
-      case 4:
-        return StudycourceScreen();
-      case 5:
-        return Bookmark();
-      case 6:
-        return UserScreen();
-      default:
-        return HomeScreen();
-    }
-  }
+  static const List<String> routePaths = [
+    '/home',
+    '/studycal',
+    '/dictionary',
+    '/translate',
+    '/course',
+    '/bookmark',
+    '/user',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -68,28 +50,25 @@ class SidebarState extends State<Sidebar> {
         setState(() {
           selectedIndex = idx;
         });
-        if (idx == 2) {
+        final path = routePaths[idx];
+        if (path == '/dictionary') {
           try {
             final wordData = await DictionaryApi.fetchWords();
             final userId = await TokenStorage.getUserID();
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => Dictionary(
-                  words: wordData.words,
-                  wordIdMap: wordData.wordIDMap,
-                  userID: userId ?? '',
-                ),
-              ),
+
+            context.go(
+              '/dictionary',
+              extra: {
+                'words': wordData.words,
+                'wordIdMap': wordData.wordIDMap,
+                'userID': userId ?? '',
+              },
             );
           } catch (e) {
             Fluttertoast.showToast(msg: '사전 로딩 오류');
           }
         } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => screenForIndex(idx)),
-          );
+          context.go(path);
         }
       },
       destinations: const [

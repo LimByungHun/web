@@ -1,8 +1,21 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'dart:js_interop';
+
+@JS('window.localStorage')
+external LocalStorage get localStorage;
+
+@JS()
+@staticInterop
+class LocalStorage {}
+
+extension LocalStorageExtension on LocalStorage {
+  external String? operator [](String key);
+  external void operator []=(String key, String? value);
+
+  @JS('removeItem')
+  external void remove(String key);
+}
 
 class TokenStorage {
-  static final _storage = FlutterSecureStorage();
-
   static Future<void> saveTokens(
     String accessToken,
     String refreshToken,
@@ -10,41 +23,41 @@ class TokenStorage {
     required String userID,
     required String nickname,
   }) async {
-    await _storage.write(key: 'access_token', value: accessToken);
-    await _storage.write(key: 'refresh_token', value: refreshToken);
-    await _storage.write(key: 'expires_at', value: expiresAt);
-    await _storage.write(key: 'user_id', value: userID);
-    await _storage.write(key: 'nickname', value: nickname);
+    localStorage['access_token'] = accessToken;
+    localStorage['refresh_token'] = refreshToken;
+    localStorage['expires_at'] = expiresAt;
+    localStorage['user_id'] = userID;
+    localStorage['nickname'] = nickname;
   }
 
-  static Future<String?> getAccessToken() async =>
-      await _storage.read(key: 'access_token');
+  static Future<String?> getAccessToken() async => localStorage['access_token'];
+
   static Future<String?> getRefreshToken() async =>
-      await _storage.read(key: 'refresh_token');
-  static Future<String?> getExpiresAt() async =>
-      await _storage.read(key: 'expires_at');
-  static Future<String?> getUserID() async =>
-      await _storage.read(key: 'user_id');
-  static Future<String?> getNickName() async =>
-      await _storage.read(key: 'nickname');
+      localStorage['refresh_token'];
+
+  static Future<String?> getExpiresAt() async => localStorage['expires_at'];
+
+  static Future<String?> getUserID() async => localStorage['user_id'];
+
+  static Future<String?> getNickName() async => localStorage['nickname'];
 
   static Future<void> setRefreshToken(String token) async {
-    await _storage.write(key: 'refresh_token', value: token);
+    localStorage['refresh_token'] = token;
   }
 
   static Future<void> setAccessToken(String token) async {
-    await _storage.write(key: 'access_token', value: token);
+    localStorage['access_token'] = token;
   }
 
   static Future<void> setNickName(String nickname) async {
-    await _storage.write(key: 'nickname', value: nickname);
+    localStorage['nickname'] = nickname;
   }
 
   static Future<void> clearTokens() async {
-    await _storage.delete(key: 'access_token');
-    await _storage.delete(key: 'refresh_token');
-    await _storage.delete(key: 'expires_at');
-    await _storage.delete(key: 'user_id');
-    await _storage.delete(key: 'nickname');
+    localStorage.remove('access_token');
+    localStorage.remove('refresh_token');
+    localStorage.remove('expires_at');
+    localStorage.remove('user_id');
+    localStorage.remove('nickname');
   }
 }
