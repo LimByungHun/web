@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:sign_web/widget/new_widget/quiz_widget.dart';
+import 'package:sign_web/widget/quiz_widget.dart';
 
 class AlllistWidget extends StatelessWidget {
   final String title;
