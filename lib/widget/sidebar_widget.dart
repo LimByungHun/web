@@ -24,7 +24,7 @@ class SidebarState extends State<Sidebar> {
 
   static const List<String> routePaths = [
     '/home',
-    '/studycal',
+    '/calendar',
     '/dictionary',
     '/translate',
     '/course',

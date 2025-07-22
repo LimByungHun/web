@@ -4,10 +4,10 @@ import 'package:sign_web/model/course_model.dart';
 import 'package:sign_web/screen/study_screen.dart';
 import 'package:sign_web/screen/studycource_screen.dart';
 import 'package:sign_web/service/study_api.dart';
-import 'package:sign_web/widget/new_widget/coursestepcard_widget.dart';
-import 'package:sign_web/widget/new_widget/review_widget.dart';
-import 'package:sign_web/widget/new_widget/stetscard_widget.dart';
+import 'package:sign_web/widget/coursestepcard_widget.dart';
+import 'package:sign_web/widget/review_widget.dart';
 import 'package:sign_web/widget/sidebar_widget.dart';
+import 'package:sign_web/widget/stetscard_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
