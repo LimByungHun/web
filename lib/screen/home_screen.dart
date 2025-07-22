@@ -236,21 +236,26 @@ class HomeScreenState extends State<HomeScreen> {
                             ),
                           ],
                         ),
-                        child: hasCourse
-                            ? StetscardWidget(
-                                learnedWords: learnedWordsCount,
-                                streakDays: streakDays,
-                                overallPercent: overallPercent,
-                              )
-                            : Center(
-                                child: Text(
-                                  '학습 코스 선택 시 통계가 표시됩니다.',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
+                        // child: hasCourse
+                        //     ? StetscardWidget(
+                        //         learnedWords: learnedWordsCount,
+                        //         streakDays: streakDays,
+                        //         overallPercent: overallPercent,
+                        //       )
+                        //     : Center(
+                        //         child: Text(
+                        //           '학습 코스 선택 시 통계가 표시됩니다.',
+                        //           style: TextStyle(
+                        //             color: Colors.grey,
+                        //             fontSize: 16,
+                        //           ),
+                        //         ),
+                        //       ),
+                        child: StetscardWidget(
+                          learnedWords: learnedWordsCount,
+                          streakDays: streakDays,
+                          overallPercent: overallPercent,
+                        ),
                       ),
                     ),
                   ],
@@ -315,21 +320,26 @@ class HomeScreenState extends State<HomeScreen> {
                             ),
                           ],
                         ),
-                        child: hasCourse
-                            ? StetscardWidget(
-                                learnedWords: learnedWordsCount,
-                                streakDays: streakDays,
-                                overallPercent: overallPercent,
-                              )
-                            : Center(
-                                child: Text(
-                                  '학습 코스 선택 시 통계가 표시됩니다.',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
+                        // child: hasCourse
+                        //     ? StetscardWidget(
+                        //         learnedWords: learnedWordsCount,
+                        //         streakDays: streakDays,
+                        //         overallPercent: overallPercent,
+                        //       )
+                        //     : Center(
+                        //         child: Text(
+                        //           '학습 코스 선택 시 통계가 표시됩니다.',
+                        //           style: TextStyle(
+                        //             color: Colors.grey,
+                        //             fontSize: 16,
+                        //           ),
+                        //         ),
+                        //       ),
+                        child: StetscardWidget(
+                          learnedWords: learnedWordsCount,
+                          streakDays: streakDays,
+                          overallPercent: overallPercent,
+                        ),
                       ),
                     ),
                   ],

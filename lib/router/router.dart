@@ -9,7 +9,7 @@ import 'package:sign_web/screen/pwrecovery_screen.dart';
 import 'package:sign_web/screen/studycource_screen.dart';
 import 'package:sign_web/screen/translate_screen.dart';
 import 'package:sign_web/screen/study_screen.dart';
-import 'package:sign_web/screen/studycalender_screen.dart';
+import 'package:sign_web/screen/studycalendar_screen.dart';
 import 'package:sign_web/screen/user_screen.dart';
 import 'package:sign_web/widget/alllist_widget.dart';
 
@@ -48,7 +48,7 @@ GoRouter createRouter() {
       ),
       GoRoute(
         path: '/calendar',
-        builder: (context, state) => const StudycalenderScreen(),
+        builder: (context, state) => const StudycalendarScreen(),
       ),
       GoRoute(
         path: '/study',
