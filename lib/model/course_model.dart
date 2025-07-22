@@ -44,6 +44,7 @@ class CourseModel with ChangeNotifier {
           )
         : {};
 
+    assignSidToWords();
     notifyListeners();
   }
 
@@ -73,8 +74,14 @@ class CourseModel with ChangeNotifier {
   }) {
     _selectedCourse = course;
     _sid = sid;
-    _words = words;
-    _steps = steps;
+    _words = words.map((word) {
+      return {...word, 'sid': sid, 'course': course};
+    }).toList();
+
+    _steps = steps.map((step) {
+      return {...step, 'sid': sid, 'course': course};
+    }).toList();
+
     _totalDays = steps.length;
     _currentDay = getNextUncompletedStep() ?? 1;
     saveToPrefs();
@@ -115,6 +122,37 @@ class CourseModel with ChangeNotifier {
     notifyListeners();
   }
 
+  void updateCompletedSteps(Map<int, List<int>> data) {
+    _completedSteps = data;
+
+    // 현재 선택된 코스가 있으면 해당 SID 기준으로 currentDay 계산
+    if (_sid != 0 && _completedSteps.containsKey(_sid)) {
+      _currentDay = getNextUncompletedStep() ?? _totalDays + 1;
+    } else {
+      _currentDay = 1;
+    }
+
+    saveToPrefs();
+    notifyListeners();
+  }
+
+  void assignSidToWords() {
+    for (final step in _steps) {
+      final sid = step['sid'] ?? _sid;
+      final stepNumber = int.tryParse(step['step'].toString());
+
+      for (final word in _words) {
+        final wordStep = int.tryParse(word['step'].toString());
+
+        if (wordStep != null && stepNumber != null && wordStep == stepNumber) {
+          word['sid'] ??= sid;
+          word['course'] ??= _selectedCourse;
+          print("SID 할당: ${word['word']} → $sid, course: ${word['course']}");
+        }
+      }
+    }
+  }
+
   Map<String, List<Map<String, dynamic>>> getCompletedCourseStep5Words() {
     final result = <String, List<Map<String, dynamic>>>{};
 
@@ -133,25 +171,22 @@ class CourseModel with ChangeNotifier {
     return result;
   }
 
-  void updateCompletedSteps(Map<int, List<int>> data) {
-    _completedSteps = data;
-
-    // 현재 선택된 코스가 있으면 해당 SID 기준으로 currentDay 계산
-    if (_sid != 0 && _completedSteps.containsKey(_sid)) {
-      final doneSteps = _completedSteps[_sid]!;
-      _currentDay = doneSteps.isEmpty
-          ? 1
-          : (doneSteps.reduce((a, b) => a > b ? a : b) + 1);
-      if (_currentDay > _totalDays) _currentDay = _totalDays;
-    } else {
-      _currentDay = 1;
+  void debugWords() {
+    print('단어 목록: ');
+    for (final w in _words) {
+      print(
+        '→ sid: ${w['sid']}, step: ${w['step']}, word: ${w['word']}, course: ${w['course']}}',
+      );
     }
 
-    saveToPrefs();
-    notifyListeners();
+    print('스텝 목록: ');
+    for (final s in _steps) {
+      print('→ step: ${s['step']}, sid: ${s['sid']}, name: ${s['step_name']}');
+    }
+
+    print('sid: $_sid');
   }
 
-  //회원탈퇴용
   Future<void> clearSelectedCourse() async {
     _selectedCourse = null;
     _sid = 0;

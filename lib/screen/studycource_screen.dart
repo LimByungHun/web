@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_web/model/course_model.dart';
 import 'package:sign_web/service/study_api.dart';
@@ -89,7 +90,7 @@ class StudycourceScreenState extends State<StudycourceScreen> {
                               if (isSelected)
                                 ChoiceWidget(
                                   description:
-                                      "${course['Study_Course']} 안내 코스입니다. ",
+                                      "${course['Study_Course']} 코스입니다. ",
                                   onSelect: () async {
                                     final courseName = course['Study_Course'];
                                     try {
@@ -98,30 +99,26 @@ class StudycourceScreenState extends State<StudycourceScreen> {
                                             courseName,
                                           );
 
-                                      final words =
-                                          List<Map<String, dynamic>>.from(
-                                            detail['words'],
-                                          );
+                                      final rawWords = detail['words'];
+                                      if (rawWords is! List) {
+                                        throw Exception('words 필드가 List가 아님');
+                                      }
 
-                                      final seen = <int>{};
-                                      final steps = <Map<String, dynamic>>[];
-                                      for (final word in words) {
-                                        final step = word['step'];
-                                        final stepName = word['step_name'];
-                                        if (step != null &&
-                                            stepName != null &&
-                                            !seen.contains(step)) {
-                                          seen.add(step);
-                                          steps.add({
-                                            'step': step,
-                                            'step_name': stepName,
-                                          });
+                                      final words = <Map<String, dynamic>>[];
+                                      for (final item in rawWords) {
+                                        if (item is Map<String, dynamic>) {
+                                          words.add(item);
+                                        } else {
+                                          debugPrint(
+                                            '[오류] 잘못된 words 항목: $item',
+                                          );
                                         }
                                       }
-                                      steps.sort(
-                                        (a, b) =>
-                                            a['step'].compareTo(b['step']),
-                                      );
+
+                                      final steps =
+                                          List<Map<String, dynamic>>.from(
+                                            detail['steps'],
+                                          );
 
                                       context.read<CourseModel>().selectCourse(
                                         course: courseName,
@@ -129,7 +126,13 @@ class StudycourceScreenState extends State<StudycourceScreen> {
                                         words: words,
                                         steps: steps,
                                       );
-                                      Navigator.pop(context);
+
+                                      WidgetsBinding.instance
+                                          .addPostFrameCallback((_) {
+                                            if (context.mounted) {
+                                              GoRouter.of(context).go('/home');
+                                            }
+                                          });
                                     } catch (e) {
                                       Fluttertoast.showToast(
                                         msg: "코스 정보 불러오기 실패",

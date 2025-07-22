@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:sign_web/main.dart';
 import 'package:sign_web/model/course_model.dart';
-import 'package:sign_web/screen/login_screen.dart';
 import 'package:sign_web/service/delete_user_api.dart';
 import 'package:sign_web/service/token_storage.dart';
 
@@ -37,9 +38,10 @@ class _DeleteUserScreenState extends State<DeleteUserScreen> {
       await courseModel.clearSelectedCourse();
       Fluttertoast.showToast(msg: "회원 탈퇴가 완료되었습니다.");
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-      );
+      loginState.value = false;
+      if (mounted) {
+        GoRouter.of(context).go('/');
+      }
     } else {
       Fluttertoast.showToast(msg: "비밀번호가 일치하지 않거나 오류가 발생했습니다.");
     }

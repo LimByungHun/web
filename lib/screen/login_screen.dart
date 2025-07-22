@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_web/main.dart';
+import 'package:sign_web/model/course_model.dart';
 import 'package:sign_web/service/login_api.dart';
+import 'package:sign_web/service/study_api.dart';
 import 'package:sign_web/service/token_storage.dart';
 import 'package:sign_web/widget/button_widget.dart';
 import 'package:sign_web/widget/textbox_widget.dart';
@@ -92,7 +96,31 @@ class LoginScreenState extends State<LoginScreen> {
 
                                 if (!mounted) return;
 
-                                context.go('/home');
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                final lastCourse = prefs.getString(
+                                  'selectedCourse',
+                                );
+
+                                if (lastCourse != null) {
+                                  try {
+                                    final courseInfo =
+                                        await StudyApi.fetchCourseDetail(
+                                          lastCourse,
+                                        );
+
+                                    context.read<CourseModel>().selectCourse(
+                                      course: lastCourse,
+                                      sid: courseInfo['sid'],
+                                      words: courseInfo['words'],
+                                      steps: courseInfo['steps'],
+                                    );
+                                  } catch (e) {
+                                    print('[ERROR] 자동 복원 실패: $e');
+                                  }
+                                }
+                                // context.read<CourseModel>().loadFromPrefs();
+                                GoRouter.of(context).go('/home');
                               } else {
                                 Fluttertoast.showToast(
                                   msg:

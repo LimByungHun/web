@@ -56,7 +56,7 @@ class SidebarState extends State<Sidebar> {
             final wordData = await DictionaryApi.fetchWords();
             final userId = await TokenStorage.getUserID();
 
-            context.go(
+            GoRouter.of(context).go(
               '/dictionary',
               extra: {
                 'words': wordData.words,
@@ -68,7 +68,7 @@ class SidebarState extends State<Sidebar> {
             Fluttertoast.showToast(msg: '사전 로딩 오류');
           }
         } else {
-          context.go(path);
+          GoRouter.of(context).go(path);
         }
       },
       destinations: const [

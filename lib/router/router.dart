@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 import 'package:sign_web/main.dart';
 import 'package:sign_web/screen/bookmark_screen.dart';
+import 'package:sign_web/screen/deleteuser_screen.dart';
 import 'package:sign_web/screen/dictionary_screen.dart';
 import 'package:sign_web/screen/home_screen.dart';
 import 'package:sign_web/screen/insertuser_screen.dart';
@@ -20,7 +21,10 @@ GoRouter createRouter() {
     redirect: (_, state) {
       final isLoggedIn = loginState.value;
       final isLoggingIn = state.fullPath == '/';
-      if (!isLoggedIn && !isLoggingIn) return '/';
+      final isSignUp = state.fullPath == '/insert';
+      final isPwRecovery = state.fullPath == '/pwrecovery';
+
+      if (!isLoggedIn && !isLoggingIn && !isSignUp && !isPwRecovery) return '/';
       if (isLoggedIn && isLoggingIn) return '/home';
       return null;
     },
@@ -34,6 +38,10 @@ GoRouter createRouter() {
       GoRoute(
         path: '/pwrecovery',
         builder: (context, state) => const PwrecoveryScreen(),
+      ),
+      GoRoute(
+        path: '/delete',
+        builder: (context, state) => const DeleteUserScreen(),
       ),
       GoRoute(
         path: '/dictionary',

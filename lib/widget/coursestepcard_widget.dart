@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:sign_web/screen/studycource_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'package:sign_web/widget/daybar_widget.dart';
 
 class CoursestepcardWidget extends StatelessWidget {
@@ -70,13 +70,10 @@ class CoursestepcardWidget extends StatelessWidget {
                     bottom: 16,
                     child: OutlinedButton(
                       onPressed: () async {
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const StudycourceScreen(),
-                          ),
+                        final result = await context.push<Map<String, dynamic>>(
+                          '/course',
                         );
-                        if (result != null && result is Map<String, dynamic>) {
+                        if (result != null) {
                           onSelectCourse(result);
                         }
                       },
@@ -108,13 +105,10 @@ class CoursestepcardWidget extends StatelessWidget {
                   Align(
                     child: ElevatedButton(
                       onPressed: () async {
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const StudycourceScreen(),
-                          ),
+                        final result = await context.push<Map<String, dynamic>>(
+                          '/course',
                         );
-                        if (result != null && result is Map<String, dynamic>) {
+                        if (result != null) {
                           onSelectCourse(result);
                         }
                       },
