@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_web/model/course_model.dart';
-import 'package:sign_web/widget/alllist_widget.dart';
 
 class ReviewCard extends StatelessWidget {
   const ReviewCard({super.key});
