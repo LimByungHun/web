@@ -81,9 +81,53 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isWide = screenWidth > 900;
+    final usableHeight = screenHeight - 350;
+    final maxChildWidth = (screenWidth - 64) / 2;
+    final adjustedSize = usableHeight.clamp(150.0, maxChildWidth);
+    final item = widget.items[pageIndex];
+
+    Widget videoWidget = SizedBox(
+      width: adjustedSize,
+      height: adjustedSize,
+      child: videoplayer != null && videoplayer!.value.isInitialized
+          ? FittedBox(
+              fit: BoxFit.contain,
+              child: SizedBox(
+                width: adjustedSize,
+                height: adjustedSize,
+                child: VideoPlayer(videoplayer!),
+              ),
+            )
+          : const Center(child: CircularProgressIndicator()),
+    );
+
+    Widget cameraControlWidget = Column(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.videocam, size: 36),
+          onPressed: () => setState(() => showCamera = true),
+        ),
+        if (showCamera)
+          SizedBox(
+            width: adjustedSize,
+            height: adjustedSize,
+            child: CameraWidget(
+              onFinish: (file) {
+                debugPrint("녹화된 경로: ${file.path}");
+                setState(() => showCamera = false);
+              },
+            ),
+          )
+        else
+          const Text('카메라를 실행하려면 아이콘을 누르세요', style: TextStyle(fontSize: 12)),
+      ],
+    );
+
     return Column(
       children: [
-        // PageView: 각 아이템 수어 애니메이션 보여주기
         Expanded(
           child: PageView.builder(
             controller: pageCtrl,
@@ -93,83 +137,73 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
               initVideo();
             },
             itemBuilder: (_, i) {
-              final item = widget.items[i];
-              final size = MediaQuery.of(context).size.width * 0.7;
-
               return SingleChildScrollView(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      item,
-                      style: TextStyle(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                      ),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 16,
+                      horizontal: 16,
                     ),
-                    Container(
-                      width: size,
-                      height: size,
-                      color: Colors.black,
-                      child:
-                          videoplayer != null &&
-                              videoplayer!.value.isInitialized
-                          ? AspectRatio(
-                              aspectRatio: videoplayer!.value.aspectRatio,
-                              child: VideoPlayer(videoplayer!),
-                            )
-                          : Center(child: CircularProgressIndicator()),
-                    ),
-                    SizedBox(height: 5),
-                    IconButton(
-                      icon: Icon(Icons.videocam, size: 36),
-                      onPressed: () => setState(() => showCamera = true),
-                    ),
-                    if (showCamera)
-                      SizedBox(
-                        width: size,
-                        height: size,
-                        child: CameraWidget(
-                          onFinish: (file) {
-                            print("녹화된 경로: ${file.path}");
-                            setState(() => showCamera = false);
-                          },
+                    child: Column(
+                      children: [
+                        Text(
+                          item,
+                          style: const TextStyle(
+                            fontSize: 36,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      )
-                    else
-                      Text(
-                        '카메라를 실행하려면 아이콘을 누르세요',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    SizedBox(height: 10),
-                    Text('$item 수어 표현 방법 적어야함', style: TextStyle(fontSize: 20)),
-                  ],
+                        const SizedBox(height: 10),
+                        if (isWide)
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1200),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Flexible(child: videoWidget),
+                                const SizedBox(width: 24),
+                                Flexible(child: cameraControlWidget),
+                              ],
+                            ),
+                          )
+                        else
+                          Column(
+                            children: [
+                              videoWidget,
+                              const SizedBox(height: 5),
+                              cameraControlWidget,
+                            ],
+                          ),
+                        const SizedBox(height: 10),
+                        Text(
+                          '$item 수어 표현 방법 적어야함',
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               );
             },
           ),
         ),
-        // 다음 단계 버튼
         Padding(
-          padding: EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           child: ElevatedButton(
             onPressed: onNext,
             child: Text(pageIndex < widget.items.length - 1 ? '다음' : '학습 완료'),
           ),
         ),
-
-        // 복습
-        if (widget.onReview != null) SizedBox(width: 12),
         if (widget.onReview != null)
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
                     onPressed: widget.onReview,
-                    child: Text("복습하기"),
+                    child: const Text("복습하기"),
                   ),
                 ),
               ],

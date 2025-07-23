@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sign_web/main.dart';
 import 'package:sign_web/screen/bookmark_screen.dart';
@@ -13,6 +14,7 @@ import 'package:sign_web/screen/study_screen.dart';
 import 'package:sign_web/screen/studycalendar_screen.dart';
 import 'package:sign_web/screen/user_screen.dart';
 import 'package:sign_web/widget/alllist_widget.dart';
+import 'package:sign_web/widget/quiz_widget.dart';
 
 GoRouter createRouter() {
   return GoRouter(
@@ -30,19 +32,24 @@ GoRouter createRouter() {
     },
     routes: [
       GoRoute(path: '/', builder: (context, state) => const LoginScreen()),
+
       GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
+
       GoRoute(
         path: '/insert',
         builder: (context, state) => const InsertuserScreen(),
       ),
+
       GoRoute(
         path: '/pwrecovery',
         builder: (context, state) => const PwrecoveryScreen(),
       ),
+
       GoRoute(
         path: '/delete',
         builder: (context, state) => const DeleteUserScreen(),
       ),
+
       GoRoute(
         path: '/dictionary',
         builder: (context, state) {
@@ -54,10 +61,12 @@ GoRouter createRouter() {
           );
         },
       ),
+
       GoRoute(
         path: '/calendar',
         builder: (context, state) => const StudycalendarScreen(),
       ),
+
       GoRoute(
         path: '/study',
         builder: (context, state) {
@@ -68,16 +77,38 @@ GoRouter createRouter() {
           return StudyScreen(course: course, day: day);
         },
       ),
+
       GoRoute(path: '/user', builder: (context, state) => const UserScreen()),
+
       GoRoute(
         path: '/course',
         builder: (context, state) => const StudycourceScreen(),
       ),
+
       GoRoute(
         path: '/translate',
         builder: (context, state) => const TranslateScreen(),
       ),
+
       GoRoute(path: '/bookmark', builder: (context, state) => const Bookmark()),
+
+      GoRoute(
+        path: '/review',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          final words = extra['words'] as List<Map<String, dynamic>>? ?? [];
+          final title = extra['title'] as String? ?? '퀴즈';
+
+          return Scaffold(
+            appBar: AppBar(title: Text(title)),
+            body: GenericQuizWidget(
+              words: words,
+              completeOnFinish: false,
+              showAppBar: false,
+            ),
+          );
+        },
+      ),
 
       GoRoute(
         path: '/review_all',

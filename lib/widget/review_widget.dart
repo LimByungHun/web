@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_web/model/course_model.dart';
 import 'package:sign_web/widget/alllist_widget.dart';
@@ -60,15 +61,12 @@ class ReviewCard extends StatelessWidget {
                   ElevatedButton(
                     style: buttonStyle,
                     onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => GenericQuizWidget(
-                            words: entry.value,
-                            completeOnFinish: false,
-                            showAppBar: true,
-                          ),
-                        ),
+                      GoRouter.of(context).push(
+                        '/review',
+                        extra: {
+                          'words': entry.value,
+                          'title': '${entry.key} 복습 퀴즈',
+                        },
                       );
                     },
                     child: const Text('복습하기'),

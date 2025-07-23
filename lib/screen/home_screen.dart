@@ -286,7 +286,7 @@ class HomeScreenState extends State<HomeScreen> {
                                   await courseModel.loadFromPrefs();
                                 },
                                 onStartStudy: (day) {
-                                  GoRouter.of(context).go(
+                                  GoRouter.of(context).push(
                                     '/study',
                                     extra: {
                                       'course': courseModel.selectedCourse!,
@@ -412,7 +412,7 @@ class HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 onPressed: () async {
-                  await context.push('/course');
+                  await GoRouter.of(context).push('/course');
                   setState(() {});
                 },
                 child: Text(
