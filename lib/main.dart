@@ -11,14 +11,13 @@ final ValueNotifier<bool> loginState = ValueNotifier(false);
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final refreshToken = await TokenStorage.getRefreshToken();
-  print('[DEBUG] refreshToken 존재, 자동 로그인 시도');
+
   if (refreshToken != null && refreshToken.isNotEmpty) {
     final result = await AutoLoginApi.autoLogin(refreshToken);
     if (result == true) {
-      print('[DEBUG] 자동 로그인 성공 → 상태 갱신');
       loginState.value = true;
     } else {
-      print('[DEBUG] 자동 로그인 실패 또는 응답 없음');
+      debugPrint("자동 로그인 실패");
     }
   }
 

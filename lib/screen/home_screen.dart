@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_web/model/course_model.dart';
-import 'package:sign_web/screen/study_screen.dart';
-import 'package:sign_web/screen/studycource_screen.dart';
 import 'package:sign_web/service/study_api.dart';
 import 'package:sign_web/widget/coursestepcard_widget.dart';
 import 'package:sign_web/widget/review_widget.dart';
@@ -174,14 +173,12 @@ class HomeScreenState extends State<HomeScreen> {
                             await courseModel.loadFromPrefs();
                           },
                           onStartStudy: (day) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => StudyScreen(
-                                  course: courseModel.selectedCourse!,
-                                  day: day,
-                                ),
-                              ),
+                            GoRouter.of(context).go(
+                              '/study',
+                              extra: {
+                                'course': courseModel.selectedCourse!,
+                                'day': day,
+                              },
                             );
                           },
                         )
@@ -236,21 +233,26 @@ class HomeScreenState extends State<HomeScreen> {
                             ),
                           ],
                         ),
-                        child: hasCourse
-                            ? StetscardWidget(
-                                learnedWords: learnedWordsCount,
-                                streakDays: streakDays,
-                                overallPercent: overallPercent,
-                              )
-                            : Center(
-                                child: Text(
-                                  '학습 코스 선택 시 통계가 표시됩니다.',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
+                        // child: hasCourse
+                        //     ? StetscardWidget(
+                        //         learnedWords: learnedWordsCount,
+                        //         streakDays: streakDays,
+                        //         overallPercent: overallPercent,
+                        //       )
+                        //     : Center(
+                        //         child: Text(
+                        //           '학습 코스 선택 시 통계가 표시됩니다.',
+                        //           style: TextStyle(
+                        //             color: Colors.grey,
+                        //             fontSize: 16,
+                        //           ),
+                        //         ),
+                        //       ),
+                        child: StetscardWidget(
+                          learnedWords: learnedWordsCount,
+                          streakDays: streakDays,
+                          overallPercent: overallPercent,
+                        ),
                       ),
                     ),
                   ],
@@ -284,14 +286,12 @@ class HomeScreenState extends State<HomeScreen> {
                                   await courseModel.loadFromPrefs();
                                 },
                                 onStartStudy: (day) {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => StudyScreen(
-                                        course: courseModel.selectedCourse!,
-                                        day: day,
-                                      ),
-                                    ),
+                                  GoRouter.of(context).push(
+                                    '/study',
+                                    extra: {
+                                      'course': courseModel.selectedCourse!,
+                                      'day': day,
+                                    },
                                   );
                                 },
                               )
@@ -315,21 +315,26 @@ class HomeScreenState extends State<HomeScreen> {
                             ),
                           ],
                         ),
-                        child: hasCourse
-                            ? StetscardWidget(
-                                learnedWords: learnedWordsCount,
-                                streakDays: streakDays,
-                                overallPercent: overallPercent,
-                              )
-                            : Center(
-                                child: Text(
-                                  '학습 코스 선택 시 통계가 표시됩니다.',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
+                        // child: hasCourse
+                        //     ? StetscardWidget(
+                        //         learnedWords: learnedWordsCount,
+                        //         streakDays: streakDays,
+                        //         overallPercent: overallPercent,
+                        //       )
+                        //     : Center(
+                        //         child: Text(
+                        //           '학습 코스 선택 시 통계가 표시됩니다.',
+                        //           style: TextStyle(
+                        //             color: Colors.grey,
+                        //             fontSize: 16,
+                        //           ),
+                        //         ),
+                        //       ),
+                        child: StetscardWidget(
+                          learnedWords: learnedWordsCount,
+                          streakDays: streakDays,
+                          overallPercent: overallPercent,
+                        ),
                       ),
                     ),
                   ],
@@ -407,10 +412,7 @@ class HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => StudycourceScreen()),
-                  );
+                  await GoRouter.of(context).push('/course');
                   setState(() {});
                 },
                 child: Text(

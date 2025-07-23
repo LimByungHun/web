@@ -67,6 +67,7 @@ class StudyApi {
         "sid": json["sid"],
         "title": json["title"],
         "words": List<Map<String, dynamic>>.from(json["words"]),
+        "steps": List<Map<String, dynamic>>.from(json["steps"]),
       };
     } else {
       final msg = response.body.isNotEmpty ? response.body : 'No details';

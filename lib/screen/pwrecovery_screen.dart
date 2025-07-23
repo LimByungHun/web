@@ -131,7 +131,7 @@ class PwrecoveryScreenState extends State<PwrecoveryScreen> {
                               backgroundColor: Colors.green,
                               textColor: Colors.white,
                             );
-                            context.go('/');
+                            GoRouter.of(context).go('/');
                           } else {
                             Fluttertoast.showToast(
                               msg: "비밀번호 재설정 실패",

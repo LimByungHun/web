@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_web/model/course_model.dart';
 import 'package:sign_web/widget/alllist_widget.dart';
-import 'package:sign_web/widget/quiz_widget.dart';
 
 class ReviewCard extends StatelessWidget {
   const ReviewCard({super.key});
@@ -60,15 +60,12 @@ class ReviewCard extends StatelessWidget {
                   ElevatedButton(
                     style: buttonStyle,
                     onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => GenericQuizWidget(
-                            words: entry.value,
-                            completeOnFinish: false,
-                            showAppBar: true,
-                          ),
-                        ),
+                      GoRouter.of(context).push(
+                        '/review',
+                        extra: {
+                          'words': entry.value,
+                          'title': '${entry.key} 복습 퀴즈',
+                        },
                       );
                     },
                     child: const Text('복습하기'),
@@ -84,16 +81,12 @@ class ReviewCard extends StatelessWidget {
                 ElevatedButton(
                   style: buttonStyle,
                   onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => AlllistWidget(
-                          title: '복습할 수 있는 코스',
-                          courseWordsMap: courseWordsMap,
-                        ),
-                      ),
+                    GoRouter.of(context).push(
+                      '/review_all',
+                      extra: {'courseWordsMap': courseWordsMap},
                     );
                   },
+
                   child: const Text('전체 보기'),
                 ),
               ],

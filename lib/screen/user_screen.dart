@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:sign_web/screen/deleteuser_screen.dart';
-import 'package:sign_web/screen/login_screen.dart';
+import 'package:go_router/go_router.dart';
+import 'package:sign_web/main.dart';
 import 'package:sign_web/screen/updateuser_screen.dart';
 import 'package:sign_web/service/logout_api.dart';
 import 'package:sign_web/service/token_storage.dart';
@@ -56,7 +56,7 @@ class UserScreenState extends State<UserScreen> {
                         Icon(Icons.person, color: Colors.purple, size: 120),
                         SizedBox(height: 16),
                         Text(
-                          '사용자 이름 넣어야함',
+                          nickname,
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w600,
@@ -112,13 +112,8 @@ class UserScreenState extends State<UserScreen> {
                                         backgroundColor: Colors.green,
                                         textColor: Colors.white,
                                       );
-                                      Navigator.pushAndRemoveUntil(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => LoginScreen(),
-                                        ),
-                                        (route) => false,
-                                      );
+                                      loginState.value = false;
+                                      GoRouter.of(context).go('/');
                                     } else {
                                       Fluttertoast.showToast(
                                         msg: "로그아웃 실패",
@@ -153,17 +148,13 @@ class UserScreenState extends State<UserScreen> {
                                   content: '정말 탈퇴하시겠습니까?\n 탈퇴시 모든 데이터가 삭제됩니다.',
                                   confirmText: '탈퇴',
                                   onConfirm: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            DeleteUserScreen(),
-                                      ),
-                                    ).whenComplete(() {
-                                      setState(() => selectedIndex = -2);
-                                    });
+                                    Future.microtask(
+                                      () => context.push('/delete'),
+                                    );
                                   },
                                 ),
+                                barrierDismissible: false,
+                                useRootNavigator: true,
                               );
                             },
                             selected: selectedIndex == 2,

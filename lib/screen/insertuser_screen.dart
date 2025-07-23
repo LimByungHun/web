@@ -144,7 +144,7 @@ class InsertuserScreenState extends State<InsertuserScreen> {
                               backgroundColor: Colors.green,
                               textColor: Colors.white,
                             );
-                            context.go('/');
+                            GoRouter.of(context).go('/');
                           } else {
                             Fluttertoast.showToast(
                               msg: result['message'] ?? '회원가입 실패',
