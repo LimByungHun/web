@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:sign_web/widget/animation_widget.dart';
 import 'package:video_player/video_player.dart';
 import 'package:sign_web/service/translate_api.dart';
 import 'package:sign_web/widget/sidebar_widget.dart';
@@ -31,6 +32,10 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
   VideoPlayerController? controller;
   Future<void>? initVideoPlayer;
+
+  final GlobalKey<AnimationWidgetState> animationKey =
+      GlobalKey<AnimationWidgetState>();
+  List<Uint8List> decodeFrames = [];
 
   @override
   void initState() {
@@ -312,83 +317,38 @@ class TranslateScreenWebState extends State<TranslateScreen> {
                                                       ),
                                                     ],
                                                     if (!isSignToKorean &&
-                                                        initVideoPlayer != null)
-                                                      FutureBuilder(
-                                                        key: ValueKey(
-                                                          controller,
+                                                        decodeFrames.isNotEmpty)
+                                                      Column(
+                                                        children: [
+                                                          AspectRatio(
+                                                            aspectRatio: 16 / 9,
+                                                            child: AnimationWidget(
+                                                              key: animationKey,
+                                                              frames:
+                                                                  decodeFrames,
+                                                            ),
+                                                          ),
+                                                          SizedBox(height: 8),
+                                                          ElevatedButton.icon(
+                                                            onPressed: () =>
+                                                                animationKey
+                                                                    .currentState
+                                                                    ?.reset(),
+                                                            icon: Icon(
+                                                              Icons.replay,
+                                                            ),
+                                                            label: Text('다시보기'),
+                                                          ),
+                                                        ],
+                                                      )
+                                                    else if (!isSignToKorean)
+                                                      const SizedBox(
+                                                        height: 180,
+                                                        child: Center(
+                                                          child: Text(
+                                                            "수어 영상 없음",
+                                                          ),
                                                         ),
-                                                        future: initVideoPlayer,
-                                                        builder: (context, snapshot) {
-                                                          if (snapshot.connectionState ==
-                                                                  ConnectionState
-                                                                      .done &&
-                                                              controller !=
-                                                                  null &&
-                                                              controller!
-                                                                  .value
-                                                                  .isInitialized) {
-                                                            return Column(
-                                                              children: [
-                                                                AspectRatio(
-                                                                  aspectRatio:
-                                                                      controller!
-                                                                          .value
-                                                                          .aspectRatio,
-                                                                  child: VideoPlayer(
-                                                                    controller!,
-                                                                  ),
-                                                                ),
-                                                                Row(
-                                                                  mainAxisAlignment:
-                                                                      MainAxisAlignment
-                                                                          .center,
-                                                                  children: [
-                                                                    IconButton(
-                                                                      icon: Icon(
-                                                                        controller!.value.isPlaying
-                                                                            ? Icons.pause
-                                                                            : Icons.play_arrow,
-                                                                      ),
-                                                                      onPressed: () {
-                                                                        setState(() {
-                                                                          controller!.value.isPlaying
-                                                                              ? controller!.pause()
-                                                                              : controller!.play();
-                                                                        });
-                                                                      },
-                                                                    ),
-                                                                    IconButton(
-                                                                      icon: const Icon(
-                                                                        Icons
-                                                                            .stop,
-                                                                      ),
-                                                                      onPressed: () {
-                                                                        controller!
-                                                                            .pause();
-                                                                        controller!.seekTo(
-                                                                          Duration
-                                                                              .zero,
-                                                                        );
-                                                                        setState(
-                                                                          () {},
-                                                                        );
-                                                                      },
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ],
-                                                            );
-                                                          } else {
-                                                            return const SizedBox(
-                                                              height: 180,
-                                                              child: Center(
-                                                                child: Text(
-                                                                  "수어 영상 없음",
-                                                                ),
-                                                              ),
-                                                            );
-                                                          }
-                                                        },
                                                       ),
                                                     if (resultKorean == null)
                                                       Text(
@@ -437,29 +397,17 @@ class TranslateScreenWebState extends State<TranslateScreen> {
                                 Fluttertoast.showToast(msg: '번역할 단어를 입력하세요.');
                                 return;
                               }
-                              final videoUrl =
+                              final frameList =
                                   await TranslateApi.translate_word_to_video(
                                     word,
                                   );
-                              if (controller != null &&
-                                  controller!.value.isInitialized) {
-                                await controller!.pause();
-                                await controller!.dispose();
-                              }
-
-                              if (videoUrl != null) {
-                                controller = VideoPlayerController.networkUrl(
-                                  Uri.parse(videoUrl),
-                                )..setPlaybackSpeed(1.0);
-
-                                initVideoPlayer = controller!.initialize().then(
-                                  (_) {
-                                    setState(() {
-                                      resultKorean = word;
-                                    });
-                                    controller!.play();
-                                  },
-                                );
+                              if (frameList != null && frameList.isNotEmpty) {
+                                setState(() {
+                                  decodeFrames = frameList
+                                      .map((b64) => base64Decode(b64))
+                                      .toList();
+                                  resultKorean = word;
+                                });
                               } else {
                                 Fluttertoast.showToast(msg: '수어 애니메이션이 없습니다.');
                               }

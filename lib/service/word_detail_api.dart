@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:sign_web/service/token_storage.dart';
 
@@ -30,11 +31,18 @@ class WordDetailApi {
     }
 
     final jsonData = json.decode(response.body);
+
+    final List<Uint8List> frameBytes =
+        (jsonData['frames'] as List<dynamic>?)
+            ?.map((frame) => base64Decode(frame as String))
+            .toList() ??
+        [];
+
     return {
       "word": jsonData['word'] ?? '',
       "pos": jsonData['pos'] ?? '',
       "definition": jsonData['definition'] ?? '',
-      "from": jsonData['from'] ?? '',
+      "frames": frameBytes,
     };
   }
 }

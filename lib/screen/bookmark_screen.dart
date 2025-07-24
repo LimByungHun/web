@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:sign_web/widget/animation_widget.dart';
 import 'package:video_player/video_player.dart';
 import 'package:sign_web/service/bookmark_api.dart';
 import 'package:sign_web/service/word_detail_api.dart';
@@ -29,6 +32,10 @@ class _BookmarkState extends State<Bookmark> {
 
   VideoPlayerController? controller;
   late Future<void> initVideoPlayer;
+
+  final GlobalKey<AnimationWidgetState> animationKey =
+      GlobalKey<AnimationWidgetState>();
+  List<Uint8List>? animationFrames;
 
   // 초성 인덱스
   final List<String> initials = [
@@ -112,24 +119,12 @@ class _BookmarkState extends State<Bookmark> {
 
     try {
       final data = await WordDetailApi.fetch(wid: wid);
-
-      controller =
-          VideoPlayerController.networkUrl(
-              Uri.parse(
-                'http://10.101.170.168/video/${Uri.encodeComponent(word)}.mp4',
-              ),
-            )
-            ..setLooping(true)
-            ..setPlaybackSpeed(1.0);
-
-      initVideoPlayer = controller!.initialize().then((_) {
-        setState(() {});
-        controller!.play();
-      });
+      final decodedFrames = data['frames'] as List<Uint8List>;
 
       setState(() {
         selectedPos = data['pos'];
         selectedDefinition = data['definition'];
+        animationFrames = decodedFrames;
         isLoadingDetail = false;
       });
     } catch (e) {
@@ -307,34 +302,33 @@ class _BookmarkState extends State<Bookmark> {
                                             style: TextStyle(fontSize: 16),
                                           ),
                                           SizedBox(height: 16),
-                                          if (controller != null)
-                                            FutureBuilder(
-                                              future: initVideoPlayer,
-                                              builder: (context, snapshot) {
-                                                if (snapshot.connectionState ==
-                                                        ConnectionState.done &&
-                                                    controller!
-                                                        .value
-                                                        .isInitialized) {
-                                                  return AspectRatio(
-                                                    aspectRatio: controller!
-                                                        .value
-                                                        .aspectRatio,
-                                                    child: VideoPlayer(
-                                                      controller!,
+                                          animationFrames != null &&
+                                                  animationFrames!.isNotEmpty
+                                              ? Column(
+                                                  children: [
+                                                    AnimationWidget(
+                                                      key: animationKey,
+                                                      frames: animationFrames!,
+                                                      fps: 12.0,
                                                     ),
-                                                  );
-                                                } else {
-                                                  return SizedBox(
-                                                    height: 120,
-                                                    child: Center(
-                                                      child:
-                                                          CircularProgressIndicator(),
+                                                    SizedBox(height: 8),
+                                                    ElevatedButton.icon(
+                                                      onPressed: () =>
+                                                          animationKey
+                                                              .currentState
+                                                              ?.reset(),
+                                                      icon: Icon(Icons.replay),
+                                                      label: Text('다시보기'),
                                                     ),
-                                                  );
-                                                }
-                                              },
-                                            ),
+                                                  ],
+                                                )
+                                              : SizedBox(
+                                                  height: 150,
+                                                  child: Center(
+                                                    child:
+                                                        CircularProgressIndicator(),
+                                                  ),
+                                                ),
                                           SizedBox(height: 16),
                                           Text('수화 설명 출력 예정'),
                                         ],

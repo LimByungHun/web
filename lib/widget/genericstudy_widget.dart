@@ -1,4 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:sign_web/service/translate_api.dart';
+import 'package:sign_web/widget/animation_widget.dart';
 
 import 'package:video_player/video_player.dart';
 import 'package:sign_web/screen/study_screen.dart';
@@ -27,26 +32,17 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
   int pageIndex = 0;
   VideoPlayerController? videoplayer;
   bool showCamera = false;
+  bool isAnalyzing = false;
+
+  final GlobalKey<AnimationWidgetState> animationKey =
+      GlobalKey<AnimationWidgetState>();
+  List<Uint8List>? animationFrames;
+  List<Uint8List> decodeFrames = [];
 
   @override
   void initState() {
     super.initState();
     pageCtrl = PageController(initialPage: 0);
-    // initVideo();
-  }
-
-  void initVideo() {
-    final item = widget.items[pageIndex];
-
-    videoplayer?.dispose();
-    videoplayer =
-        VideoPlayerController.networkUrl(
-            Uri.parse(
-              'http://10.101.170.168/video/${Uri.encodeComponent(item)}.mp4',
-            ),
-          )
-          ..setLooping(true)
-          ..setPlaybackSpeed(1.0);
   }
 
   Future<void> onNext() async {
@@ -67,7 +63,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
       if (screenState != null) {
         screenState.nextStep();
       } else {
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        GoRouter.of(context).go('/home');
       }
     }
   }
@@ -115,9 +111,68 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
             width: adjustedSize,
             height: adjustedSize,
             child: CameraWidget(
-              onFinish: (file) {
-                debugPrint("녹화된 경로: ${file.path}");
-                setState(() => showCamera = false);
+              continuousMode: true,
+              onFinish: (file) async {
+                setState(() => isAnalyzing = true);
+                final expected = widget.items[pageIndex];
+                final result = await TranslateApi.signToText(
+                  file.path,
+                  expected,
+                );
+                final isCorrect = result['match'] == true;
+                setState(() {
+                  isAnalyzing = false;
+                  showCamera = false;
+                });
+                if (!mounted) return;
+                if (!isCorrect) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (pageCtrl.hasClients) {
+                      pageCtrl.jumpToPage(pageIndex);
+                    }
+                  });
+                }
+                await showDialog(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: isCorrect
+                        ? Text('정답입니다.', style: TextStyle(color: Colors.green))
+                        : Text('오답입니다.', style: TextStyle(color: Colors.red)),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          isCorrect ? 'O' : 'X',
+                          style: TextStyle(
+                            fontSize: 80,
+                            fontWeight: FontWeight.bold,
+                            color: isCorrect ? Colors.green : Colors.red,
+                          ),
+                        ),
+                        isCorrect
+                            ? SizedBox.shrink()
+                            : Padding(
+                                padding: EdgeInsets.only(top: 10),
+                                child: Text(
+                                  '다시 시도해주세요',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                              ),
+                      ],
+                    ),
+                  ),
+                );
+                if (isCorrect) {
+                  await Future.delayed(Duration(microseconds: 500));
+                  if (pageIndex < widget.items.length - 1) {
+                    pageCtrl.nextPage(
+                      duration: Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  } else {
+                    await onNext();
+                  }
+                }
               },
             ),
           )
@@ -125,6 +180,19 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
           const Text('카메라를 실행하려면 아이콘을 누르세요', style: TextStyle(fontSize: 12)),
       ],
     );
+
+    if (isAnalyzing) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text("동작 확인중! 조금만 기다려주세요", style: TextStyle(fontSize: 18)),
+          ],
+        ),
+      );
+    }
 
     return Column(
       children: [
@@ -134,7 +202,17 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
             itemCount: widget.items.length,
             onPageChanged: (idx) {
               setState(() => pageIndex = idx);
-              initVideo();
+              Column(
+                children: [
+                  AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: AnimationWidget(
+                      key: animationKey,
+                      frames: decodeFrames,
+                    ),
+                  ),
+                ],
+              );
             },
             itemBuilder: (_, i) {
               return SingleChildScrollView(

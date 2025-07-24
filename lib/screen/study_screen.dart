@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_web/model/course_model.dart';
 import 'package:sign_web/widget/genericstudy_widget.dart';
@@ -91,13 +92,25 @@ class StudyScreenState extends State<StudyScreen> {
     final stepData = steps[currentStep];
     if (todayItems.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.course)),
+        appBar: AppBar(
+          title: Text(widget.course),
+          leading: IconButton(
+            onPressed: () => GoRouter.of(context).go('/home'),
+            icon: Icon(Icons.arrow_back),
+          ),
+        ),
         body: const Center(child: Text('학습할 콘텐츠가 없습니다.')),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.course} ${stepData.title}')),
+      appBar: AppBar(
+        title: Text('${widget.course} ${stepData.title}'),
+        leading: IconButton(
+          onPressed: () => GoRouter.of(context).go('/home'),
+          icon: Icon(Icons.arrow_back),
+        ),
+      ),
       body: stepData.widget,
     );
   }
