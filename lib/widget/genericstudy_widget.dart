@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -5,10 +6,11 @@ import 'package:go_router/go_router.dart';
 import 'package:sign_web/service/translate_api.dart';
 import 'package:sign_web/widget/animation_widget.dart';
 
-import 'package:video_player/video_player.dart';
 import 'package:sign_web/screen/study_screen.dart';
 import 'package:sign_web/service/study_api.dart';
 import 'package:sign_web/widget/camera_widget.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:typed_data';
 
 class GenericStudyWidget extends StatefulWidget {
   final List<String> items;
@@ -30,19 +32,18 @@ class GenericStudyWidget extends StatefulWidget {
 class GenericStudyWidgetState extends State<GenericStudyWidget> {
   late PageController pageCtrl;
   int pageIndex = 0;
-  VideoPlayerController? videoplayer;
   bool showCamera = false;
   bool isAnalyzing = false;
+  bool isLoading = false;
 
-  final GlobalKey<AnimationWidgetState> animationKey =
-      GlobalKey<AnimationWidgetState>();
-  List<Uint8List>? animationFrames;
-  List<Uint8List> decodeFrames = [];
+  final GlobalKey<AnimationWidgetState> animationKey = GlobalKey();
+  List<Uint8List>? base64Frames;
 
   @override
   void initState() {
     super.initState();
     pageCtrl = PageController(initialPage: 0);
+    loadAnimationFrames(widget.items[pageIndex]);
   }
 
   Future<void> onNext() async {
@@ -68,9 +69,22 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
     }
   }
 
+  Future<void> loadAnimationFrames(String wordText) async {
+    setState(() {
+      isLoading = true;
+      base64Frames = null;
+    });
+    final result = await TranslateApi.translate_word_to_video(wordText);
+    if (result != null) {
+      setState(() {
+        base64Frames = result.map((b64) => base64Decode(b64)).toList();
+      });
+    }
+    setState(() => isLoading = false);
+  }
+
   @override
   void dispose() {
-    videoplayer?.dispose();
     pageCtrl.dispose();
     super.dispose();
   }
@@ -85,17 +99,44 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
     final adjustedSize = usableHeight.clamp(150.0, maxChildWidth);
     final item = widget.items[pageIndex];
 
+    if (isAnalyzing) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text("동작 확인중! 조금만 기다려주세요", style: TextStyle(fontSize: 18)),
+          ],
+        ),
+      );
+    }
+
     Widget videoWidget = SizedBox(
       width: adjustedSize,
       height: adjustedSize,
-      child: videoplayer != null && videoplayer!.value.isInitialized
-          ? FittedBox(
-              fit: BoxFit.contain,
-              child: SizedBox(
-                width: adjustedSize,
-                height: adjustedSize,
-                child: VideoPlayer(videoplayer!),
-              ),
+      child: base64Frames != null
+          ? Column(
+              children: [
+                FittedBox(
+                  fit: BoxFit.contain,
+                  child: SizedBox(
+                    width: adjustedSize,
+                    height: adjustedSize,
+                    child: AnimationWidget(
+                      key: animationKey,
+                      frames: base64Frames!,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    animationKey.currentState?.reset();
+                  },
+                  icon: Icon(Icons.replay),
+                  label: Text('다시보기'),
+                ),
+              ],
             )
           : const Center(child: CircularProgressIndicator()),
     );
@@ -110,8 +151,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
           SizedBox(
             width: adjustedSize,
             height: adjustedSize,
-            child: CameraWidget(
-              continuousMode: true,
+            child: CameraWidgetWeb(
               onFinish: (file) async {
                 setState(() => isAnalyzing = true);
                 final expected = widget.items[pageIndex];
@@ -120,14 +160,11 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
                   expected,
                 );
                 final isCorrect = result['match'] == true;
-                setState(() {
-                  isAnalyzing = false;
-                  showCamera = false;
-                });
                 if (!mounted) return;
                 if (!isCorrect) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (pageCtrl.hasClients) {
+                    if (pageCtrl.hasClients &&
+                        pageCtrl.page?.round() != pageIndex) {
                       pageCtrl.jumpToPage(pageIndex);
                     }
                   });
@@ -149,7 +186,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
                             color: isCorrect ? Colors.green : Colors.red,
                           ),
                         ),
-                        isCorrect
+                        !isCorrect
                             ? SizedBox.shrink()
                             : Padding(
                                 padding: EdgeInsets.only(top: 10),
@@ -162,6 +199,10 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
                     ),
                   ),
                 );
+                setState(() {
+                  isAnalyzing = false;
+                  showCamera = false;
+                });
                 if (isCorrect) {
                   await Future.delayed(Duration(microseconds: 500));
                   if (pageIndex < widget.items.length - 1) {
@@ -181,38 +222,16 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
       ],
     );
 
-    if (isAnalyzing) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text("동작 확인중! 조금만 기다려주세요", style: TextStyle(fontSize: 18)),
-          ],
-        ),
-      );
-    }
-
     return Column(
       children: [
         Expanded(
           child: PageView.builder(
+            key: PageStorageKey('study_pageview'),
             controller: pageCtrl,
             itemCount: widget.items.length,
             onPageChanged: (idx) {
               setState(() => pageIndex = idx);
-              Column(
-                children: [
-                  AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: AnimationWidget(
-                      key: animationKey,
-                      frames: decodeFrames,
-                    ),
-                  ),
-                ],
-              );
+              loadAnimationFrames(widget.items[idx]);
             },
             itemBuilder: (_, i) {
               return SingleChildScrollView(
@@ -273,6 +292,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
             child: Text(pageIndex < widget.items.length - 1 ? '다음' : '학습 완료'),
           ),
         ),
+        if (widget.onReview != null) SizedBox(width: 12),
         if (widget.onReview != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
