@@ -25,7 +25,7 @@ class DaybarWidget extends StatelessWidget {
 
         return Padding(
           padding: EdgeInsets.symmetric(
-            horizontal: MediaQuery.of(context).size.width * 0.03, // 디바이스별 간격
+            horizontal: MediaQuery.of(context).size.width * 0.03,
           ),
           child: Column(
             children: [

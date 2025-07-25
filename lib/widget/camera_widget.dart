@@ -82,15 +82,11 @@ class _CameraWidgetState extends State<CameraWidget> {
       setState(() => isInitialized = true);
 
       if (widget.continuousMode) {
-        // 연속 모드: 프레임을 계속 전송
         startContinuousCapture();
       } else {
-        // 일반 모드: 5초 녹화 후 종료
         if (kIsWeb) {
-          // 웹에서는 프레임 캡처 방식 사용
           startWebRecording();
         } else {
-          // 모바일에서는 비디오 녹화
           await controller!.prepareForVideoRecording();
           await controller!.startVideoRecording();
 
@@ -115,7 +111,6 @@ class _CameraWidgetState extends State<CameraWidget> {
   void startContinuousCapture() {
     if (kIsWeb) {
       bool isCapturing = false;
-      // 웹: 주기적으로 사진 찍기
       captureTimer = Timer.periodic(Duration(milliseconds: 200), (timer) async {
         if (isDisposed || !mounted) {
           timer.cancel();
@@ -134,7 +129,6 @@ class _CameraWidgetState extends State<CameraWidget> {
             if (!mounted || isDisposed) return;
             frameBuffer.add(bytes);
 
-            // 30개의 프레임이 모이면 콜백 호출
             if (frameBuffer.length >= 30) {
               widget.onFramesAvailable?.call(List.from(frameBuffer));
               frameBuffer.clear();
@@ -147,11 +141,8 @@ class _CameraWidgetState extends State<CameraWidget> {
         }
       });
     } else {
-      // 모바일: 이미지 스트림 사용 (기존 코드와 유사)
       controller!.startImageStream((image) {
         if (!mounted || isDisposed) return;
-        // YUV to JPEG 변환 로직 필요
-        // 여기서는 간단히 처리
       });
     }
   }
@@ -160,7 +151,6 @@ class _CameraWidgetState extends State<CameraWidget> {
     bool isCapturing = false;
     int frameCount = 0;
     const maxFrames = 50;
-    // 웹에서 5초간 프레임 수집
     captureTimer = Timer.periodic(Duration(milliseconds: 100), (timer) async {
       if (!mounted || isDisposed || frameCount >= maxFrames) {
         timer.cancel();
@@ -188,7 +178,6 @@ class _CameraWidgetState extends State<CameraWidget> {
       }
     });
 
-    // 5초 후 종료
     recordingTimer = Timer(Duration(seconds: 5), () {
       if (!mounted || isDisposed) return;
 
@@ -204,8 +193,6 @@ class _CameraWidgetState extends State<CameraWidget> {
       if (widget.onFramesAvailable != null) {
         widget.onFramesAvailable!(List.from(frameBuffer));
       } else if (widget.onFinish != null) {
-        // 웹에서는 프레임들을 비디오로 간주하여 임시 파일 생성
-        // 프레임들을 연결하여 하나의 데이터로 만들기
         final combinedData = <int>[];
         for (final frame in frameBuffer) {
           combinedData.addAll(frame);
@@ -213,7 +200,7 @@ class _CameraWidgetState extends State<CameraWidget> {
 
         final tempFile = XFile.fromData(
           Uint8List.fromList(combinedData),
-          mimeType: 'video/mp4', // 비디오로 처리하도록 MIME 타입 설정
+          mimeType: 'video/mp4',
           name: 'recording_${DateTime.now().millisecondsSinceEpoch}.mp4',
         );
         widget.onFinish!(tempFile);

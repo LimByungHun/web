@@ -16,14 +16,12 @@ class TranslateApi {
       final accessToken = await TokenStorage.getAccessToken();
       final refreshToken = await TokenStorage.getRefreshToken();
 
-      // MediaStream에서 비디오 프레임들을 캡처
       final frames = await captureFramesFromStream(mediaStream);
 
       if (frames.isEmpty) {
         return {"error": true, "message": "프레임 캡처 실패"};
       }
 
-      // 프레임들을 서버로 전송
       final uri = Uri.parse('$baseUrl/translate/sign_to_text_frames');
 
       final response = await http.post(
@@ -143,38 +141,29 @@ class TranslateApi {
     final List<String> base64Frames = [];
 
     try {
-      // 비디오 엘리먼트 생성
       final video = html.VideoElement()
         ..srcObject = stream
         ..autoplay = true
         ..muted = true;
 
-      // 캔버스 엘리먼트 생성
       final canvas = html.CanvasElement();
       final ctx = canvas.context2D;
 
-      // 비디오가 로드될 때까지 대기
       await video.onLoadedData.first;
 
-      // 캔버스 크기 설정
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
 
-      // 3초 동안 200ms마다 프레임 캡처 (15프레임)
       for (int i = 0; i < 15; i++) {
-        // 현재 프레임을 캔버스에 그리기
         ctx.drawImageScaled(video, 0, 0, canvas.width!, canvas.height!);
 
-        // 캔버스를 base64로 변환
         final dataUrl = canvas.toDataUrl('image/jpeg', 0.8);
-        final base64Data = dataUrl.split(',')[1]; // data:image/jpeg;base64, 제거
+        final base64Data = dataUrl.split(',')[1];
         base64Frames.add(base64Data);
 
-        // 200ms 대기
         await Future.delayed(Duration(milliseconds: 200));
       }
 
-      // MediaStream 정리
       stream.getTracks().forEach((track) => track.stop());
     } catch (e) {
       print('프레임 캡처 오류: $e');

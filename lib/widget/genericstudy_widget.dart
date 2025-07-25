@@ -151,27 +151,23 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
             width: adjustedSize,
             height: adjustedSize,
             child: CameraWidget(
-              continuousMode: true, // 연속 모드로 프레임들을 받음
+              continuousMode: true,
               onFramesAvailable: (frames) async {
-                // 프레임들이 준비되면 바로 서버로 전송
                 setState(() => isAnalyzing = true);
 
                 try {
                   final expected = widget.items[pageIndex];
 
-                  // 프레임들을 base64로 변환
                   final base64Frames = frames
                       .map((frame) => base64Encode(frame))
                       .toList();
 
-                  // 서버로 전송
                   final sendResult = await TranslateApi.sendFrames(
                     base64Frames,
                   );
                   print('프레임 전송 결과: $sendResult');
 
-                  // 분석 결과 가져오기
-                  await Future.delayed(Duration(seconds: 1)); // 서버 처리 대기
+                  await Future.delayed(Duration(seconds: 1));
                   final translateResult = await TranslateApi.translateLatest();
 
                   final recognizedWord = translateResult?['korean'] ?? '';

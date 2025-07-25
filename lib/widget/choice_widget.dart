@@ -34,13 +34,12 @@ class ChoiceWidgetState extends State<ChoiceWidget> {
         children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: widget.onClose, // 박스 부분만 닫기
+            onTap: widget.onClose,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(widget.description, style: TextStyle(fontSize: 15)),
             ),
           ),
-          // 펼쳐졌을 때 내용
           SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,

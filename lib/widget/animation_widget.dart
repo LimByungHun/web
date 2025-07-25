@@ -16,7 +16,6 @@ class AnimationWidgetState extends State<AnimationWidget> {
   late int frameIndex;
   Timer? timer;
 
-  /// 외부에서 다시 재생할 수 있도록 공개된 reset 메서드
   void reset() {
     timer?.cancel();
     setState(() => frameIndex = 0);
@@ -29,7 +28,7 @@ class AnimationWidgetState extends State<AnimationWidget> {
       if (frameIndex < widget.frames.length - 1) {
         setState(() => frameIndex++);
       } else {
-        timer?.cancel(); // 자동 종료
+        timer?.cancel();
       }
     });
   }
