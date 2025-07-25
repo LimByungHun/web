@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:sign_web/service/token_storage.dart';
@@ -8,25 +9,32 @@ const String baseUrl = 'http://10.101.170.168';
 class TranslateApi {
   // 수어 -> 단어
   static Future<Map<String, dynamic>> signToText(
-    String videoPath,
+    html.MediaStream mediaStream,
     String expectedWord,
   ) async {
     try {
       final accessToken = await TokenStorage.getAccessToken();
       final refreshToken = await TokenStorage.getRefreshToken();
 
-      final uri = Uri.parse('$baseUrl/translate/sign_to_text');
+      // MediaStream에서 비디오 프레임들을 캡처
+      final frames = await captureFramesFromStream(mediaStream);
 
-      final request = http.MultipartRequest('POST', uri)
-        ..fields['expected_word'] = expectedWord
-        ..files.add(await http.MultipartFile.fromPath('file', videoPath))
-        ..headers.addAll({
+      if (frames.isEmpty) {
+        return {"error": true, "message": "프레임 캡처 실패"};
+      }
+
+      // 프레임들을 서버로 전송
+      final uri = Uri.parse('$baseUrl/translate/sign_to_text_frames');
+
+      final response = await http.post(
+        uri,
+        headers: {
           'Authorization': 'Bearer $accessToken',
           'X-Refresh-Token': refreshToken ?? '',
-        });
-
-      final streamed = await request.send();
-      final response = await http.Response.fromStream(streamed);
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'frames': frames, 'expected_word': expectedWord}),
+      );
 
       final newAccessToken = response.headers['x-new-access-token'];
       if (newAccessToken != null && newAccessToken.isNotEmpty) {
@@ -39,7 +47,7 @@ class TranslateApi {
         throw Exception('서버 오류: ${response.body}');
       }
     } catch (e) {
-      print('signToText 오류: $e');
+      print('signToTextWeb 오류: $e');
       return {"error": true, "message": e.toString()};
     }
   }
@@ -95,7 +103,7 @@ class TranslateApi {
 
     final url = Uri.parse("$baseUrl/translate/analyze_frames");
 
-    print("--- 프레임 ${base64Frames.length}개 서버로 전송 시작...");
+    print("프레임 ${base64Frames.length}개 서버로 전송 시작...");
 
     try {
       final response = await http.post(
@@ -127,6 +135,52 @@ class TranslateApi {
     }
 
     return null;
+  }
+
+  static Future<List<String>> captureFramesFromStream(
+    html.MediaStream stream,
+  ) async {
+    final List<String> base64Frames = [];
+
+    try {
+      // 비디오 엘리먼트 생성
+      final video = html.VideoElement()
+        ..srcObject = stream
+        ..autoplay = true
+        ..muted = true;
+
+      // 캔버스 엘리먼트 생성
+      final canvas = html.CanvasElement();
+      final ctx = canvas.context2D;
+
+      // 비디오가 로드될 때까지 대기
+      await video.onLoadedData.first;
+
+      // 캔버스 크기 설정
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // 3초 동안 200ms마다 프레임 캡처 (15프레임)
+      for (int i = 0; i < 15; i++) {
+        // 현재 프레임을 캔버스에 그리기
+        ctx.drawImageScaled(video, 0, 0, canvas.width!, canvas.height!);
+
+        // 캔버스를 base64로 변환
+        final dataUrl = canvas.toDataUrl('image/jpeg', 0.8);
+        final base64Data = dataUrl.split(',')[1]; // data:image/jpeg;base64, 제거
+        base64Frames.add(base64Data);
+
+        // 200ms 대기
+        await Future.delayed(Duration(milliseconds: 200));
+      }
+
+      // MediaStream 정리
+      stream.getTracks().forEach((track) => track.stop());
+    } catch (e) {
+      print('프레임 캡처 오류: $e');
+    }
+
+    return base64Frames;
   }
 
   static Future<Map<String, dynamic>?> translateLatest() async {

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -26,6 +25,7 @@ class CameraWidget extends StatefulWidget {
 class _CameraWidgetState extends State<CameraWidget> {
   CameraController? controller;
   bool isInitialized = false;
+  bool isDisposed = false;
   List<Uint8List> frameBuffer = [];
   Timer? captureTimer;
   Timer? recordingTimer;
@@ -95,6 +95,7 @@ class _CameraWidgetState extends State<CameraWidget> {
           await controller!.startVideoRecording();
 
           recordingTimer = Timer(Duration(seconds: 5), () async {
+            if (!mounted || isDisposed) return;
             if (controller != null && controller!.value.isRecordingVideo) {
               final file = await controller!.stopVideoRecording();
               if (!kIsWeb) {
@@ -113,27 +114,42 @@ class _CameraWidgetState extends State<CameraWidget> {
 
   void startContinuousCapture() {
     if (kIsWeb) {
+      bool isCapturing = false;
       // 웹: 주기적으로 사진 찍기
       captureTimer = Timer.periodic(Duration(milliseconds: 200), (timer) async {
-        if (controller != null && controller!.value.isInitialized && mounted) {
+        if (isDisposed || !mounted) {
+          timer.cancel();
+          return;
+        }
+
+        if (controller != null &&
+            controller!.value.isInitialized &&
+            mounted &&
+            !isCapturing) {
+          isCapturing = true;
           try {
             final XFile image = await controller!.takePicture();
+            if (!mounted || isDisposed) return;
             final bytes = await image.readAsBytes();
+            if (!mounted || isDisposed) return;
             frameBuffer.add(bytes);
 
-            // 10개의 프레임이 모이면 콜백 호출
-            if (frameBuffer.length >= 10) {
+            // 30개의 프레임이 모이면 콜백 호출
+            if (frameBuffer.length >= 30) {
               widget.onFramesAvailable?.call(List.from(frameBuffer));
               frameBuffer.clear();
             }
           } catch (e) {
             print("프레임 캡처 오류: $e");
+          } finally {
+            isCapturing = false;
           }
         }
       });
     } else {
       // 모바일: 이미지 스트림 사용 (기존 코드와 유사)
       controller!.startImageStream((image) {
+        if (!mounted || isDisposed) return;
         // YUV to JPEG 변환 로직 필요
         // 여기서는 간단히 처리
       });
@@ -141,35 +157,83 @@ class _CameraWidgetState extends State<CameraWidget> {
   }
 
   void startWebRecording() {
+    bool isCapturing = false;
+    int frameCount = 0;
+    const maxFrames = 50;
     // 웹에서 5초간 프레임 수집
     captureTimer = Timer.periodic(Duration(milliseconds: 100), (timer) async {
-      if (controller != null && controller!.value.isInitialized) {
+      if (!mounted || isDisposed || frameCount >= maxFrames) {
+        timer.cancel();
+        if (!isDisposed && mounted && frameBuffer.isNotEmpty) {
+          handleWebRecordingComplete();
+        }
+        return;
+      }
+      if (controller != null &&
+          controller!.value.isInitialized &&
+          !isCapturing) {
+        isCapturing = true;
         try {
           final XFile image = await controller!.takePicture();
+          if (!mounted || isDisposed) return;
           final bytes = await image.readAsBytes();
+          if (!mounted || isDisposed) return;
           frameBuffer.add(bytes);
+          frameCount++;
         } catch (e) {
           print("프레임 캡처 오류: $e");
+        } finally {
+          isCapturing = false;
         }
       }
     });
 
     // 5초 후 종료
     recordingTimer = Timer(Duration(seconds: 5), () {
+      if (!mounted || isDisposed) return;
+
       captureTimer?.cancel();
-      // 수집된 프레임들을 하나의 "파일"로 간주하여 콜백 호출
-      if (frameBuffer.isNotEmpty && widget.onFramesAvailable != null) {
-        widget.onFramesAvailable!(List.from(frameBuffer));
-        frameBuffer.clear();
-      }
+      handleWebRecordingComplete();
     });
+  }
+
+  void handleWebRecordingComplete() {
+    if (!mounted || isDisposed) return;
+
+    if (frameBuffer.isNotEmpty) {
+      if (widget.onFramesAvailable != null) {
+        widget.onFramesAvailable!(List.from(frameBuffer));
+      } else if (widget.onFinish != null) {
+        // 웹에서는 프레임들을 비디오로 간주하여 임시 파일 생성
+        // 프레임들을 연결하여 하나의 데이터로 만들기
+        final combinedData = <int>[];
+        for (final frame in frameBuffer) {
+          combinedData.addAll(frame);
+        }
+
+        final tempFile = XFile.fromData(
+          Uint8List.fromList(combinedData),
+          mimeType: 'video/mp4', // 비디오로 처리하도록 MIME 타입 설정
+          name: 'recording_${DateTime.now().millisecondsSinceEpoch}.mp4',
+        );
+        widget.onFinish!(tempFile);
+      }
+      frameBuffer.clear();
+    }
   }
 
   @override
   void dispose() {
+    isDisposed = true;
     captureTimer?.cancel();
     recordingTimer?.cancel();
-    controller?.dispose();
+    if (controller != null) {
+      if (controller!.value.isStreamingImages) {
+        controller!.stopImageStream();
+      }
+      if (controller!.value.isRecordingVideo) {}
+      controller!.dispose();
+    }
     super.dispose();
   }
 

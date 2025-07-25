@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:sign_web/widget/animation_widget.dart';
-import 'package:video_player/video_player.dart';
 import 'package:sign_web/service/translate_api.dart';
 import 'package:sign_web/widget/sidebar_widget.dart';
-import 'package:sign_web/widget/camera_widget.dart';
+import 'package:image/image.dart' as img;
 
 class TranslateScreen extends StatefulWidget {
   const TranslateScreen({super.key});
@@ -18,6 +18,7 @@ class TranslateScreen extends StatefulWidget {
 class TranslateScreenWebState extends State<TranslateScreen> {
   bool isSignToKorean = true; // true: 수어 -> 한글 | false 한글 -> 수어
   bool isCameraOn = false;
+  XFile? capturedVideo;
 
   final TextEditingController inputController = TextEditingController();
 
@@ -30,9 +31,10 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   String? resultJapanese;
   String? resultChinese;
 
-  VideoPlayerController? controller;
   Future<void>? initVideoPlayer;
-
+  bool isProcessingFrame = false;
+  CameraController? cameraController;
+  final List<Uint8List> frameBuffer = [];
   final GlobalKey<AnimationWidgetState> animationKey =
       GlobalKey<AnimationWidgetState>();
   List<Uint8List> decodeFrames = [];
@@ -44,7 +46,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
   @override
   void dispose() {
-    controller?.dispose();
+    stopCamera();
     super.dispose();
   }
 
@@ -66,6 +68,73 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     }
   }
 
+  Future<void> stopCamera() async {
+    if (cameraController == null) return;
+
+    try {
+      // 스트림 중지 (예외 없이 진행되도록)
+      if (cameraController!.value.isStreamingImages) {
+        print("--- 이미지 스트림 중지 시도...");
+        await cameraController!.stopImageStream();
+        print("--- 이미지 스트림 중지 완료");
+      }
+    } catch (e) {
+      print("--- 이미지 스트림 중지 오류: $e");
+    }
+
+    try {
+      // 영상 녹화 중이라면 정지
+      if (cameraController!.value.isRecordingVideo) {
+        print("--- 영상 녹화 중지 시도...");
+        final file = await cameraController!.stopVideoRecording();
+        capturedVideo = file;
+        print("--- 영상 녹화 완료: ${file.path}");
+      }
+    } catch (e) {
+      print("--- 녹화 중지 오류: $e");
+    }
+
+    try {
+      // 컨트롤러 dispose
+      print("--- 컨트롤러 dispose 시작...");
+      await cameraController!.dispose();
+      print("--- 컨트롤러 dispose 완료");
+    } catch (e) {
+      print("--- 컨트롤러 dispose 오류: $e");
+    } finally {
+      cameraController = null;
+    }
+
+    if (mounted) {
+      setState(() {
+        isCameraOn = false;
+      });
+    }
+  }
+
+  void onFrameAvailable(CameraImage image) async {
+    if (isProcessingFrame) return;
+    isProcessingFrame = true;
+
+    try {
+      final jpeg = await convertYUV420toJPEG(image);
+      if (jpeg != null) {
+        frameBuffer.add(jpeg);
+
+        if (frameBuffer.length > 30) {
+          await sendFrames(List.from(frameBuffer));
+          frameBuffer.clear();
+        }
+      } else {
+        print("--- JPEG 변환 실패: convertYUV420toJPEG에서 null 반환");
+      }
+    } catch (e) {
+      print("--- 프레임 처리 오류 (YUV->JPEG): $e");
+    } finally {
+      isProcessingFrame = false;
+    }
+  }
+
   void toggleDirection() {
     setState(() {
       isSignToKorean = !isSignToKorean;
@@ -77,6 +146,56 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     setState(() {
       isCameraOn = !isCameraOn;
     });
+  }
+
+  Future<Uint8List?> convertYUV420toJPEG(CameraImage image) async {
+    try {
+      final width = image.width;
+      final height = image.height;
+
+      final img.Image imgData = img.Image(width: width, height: height);
+
+      final planeY = image.planes[0];
+      final planeU = image.planes[1];
+      final planeV = image.planes[2];
+
+      final bytesY = planeY.bytes;
+      final bytesU = planeU.bytes;
+      final bytesV = planeV.bytes;
+
+      final int rowStrideY = planeY.bytesPerRow;
+      final int rowStrideU = planeU.bytesPerRow;
+      final int pixelStrideU = planeU.bytesPerPixel ?? 1;
+
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          final int uvIndex = (y ~/ 2) * rowStrideU + (x ~/ 2) * pixelStrideU;
+          final int yIndex = y * rowStrideY + x;
+
+          final yp = bytesY[yIndex];
+          final up = bytesU[uvIndex];
+          final vp = bytesV[uvIndex];
+
+          int r = (yp + 1.402 * (vp - 128)).round();
+          int g = (yp - 0.344136 * (up - 128) - 0.714136 * (vp - 128)).round();
+          int b = (yp + 1.772 * (up - 128)).round();
+
+          imgData.setPixelRgb(
+            x,
+            y,
+            r.clamp(0, 255),
+            g.clamp(0, 255),
+            b.clamp(0, 255),
+          );
+        }
+      }
+
+      final encodedBytes = img.encodeJpg(imgData, quality: 80);
+      return Uint8List.fromList(encodedBytes);
+    } catch (e) {
+      print("--- convertYUV420toJPEG 오류: $e");
+      return null;
+    }
   }
 
   @override
@@ -222,15 +341,22 @@ class TranslateScreenWebState extends State<TranslateScreen> {
                                         ),
                                       ),
                                     // 카메라 프리뷰
-                                    if (isSignToKorean && isCameraOn)
+                                    if (isSignToKorean &&
+                                        isCameraOn &&
+                                        cameraController != null &&
+                                        cameraController!.value.isInitialized)
                                       Expanded(
                                         child: Container(
                                           constraints: BoxConstraints(
                                             maxWidth: contentWidth * 0.8,
                                           ),
-                                          child: CameraWidget(
-                                            continuousMode: true,
-                                            onFramesAvailable: sendFrames,
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                            child: CameraPreview(
+                                              cameraController!,
+                                            ),
                                           ),
                                         ),
                                       ),
