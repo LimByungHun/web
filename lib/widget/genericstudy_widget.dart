@@ -9,8 +9,6 @@ import 'package:sign_web/widget/animation_widget.dart';
 import 'package:sign_web/screen/study_screen.dart';
 import 'package:sign_web/service/study_api.dart';
 import 'package:sign_web/widget/camera_widget.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:typed_data';
 
 class GenericStudyWidget extends StatefulWidget {
   final List<String> items;
@@ -151,67 +149,106 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
           SizedBox(
             width: adjustedSize,
             height: adjustedSize,
-            child: CameraWidgetWeb(
-              onFinish: (file) async {
+            child: CameraWidget(
+              continuousMode: true, // 연속 모드로 프레임들을 받음
+              onFramesAvailable: (frames) async {
+                // 프레임들이 준비되면 바로 서버로 전송
                 setState(() => isAnalyzing = true);
-                final expected = widget.items[pageIndex];
-                final result = await TranslateApi.signToText(
-                  file.path,
-                  expected,
-                );
-                final isCorrect = result['match'] == true;
-                if (!mounted) return;
-                if (!isCorrect) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (pageCtrl.hasClients &&
-                        pageCtrl.page?.round() != pageIndex) {
-                      pageCtrl.jumpToPage(pageIndex);
-                    }
+
+                try {
+                  final expected = widget.items[pageIndex];
+
+                  // 프레임들을 base64로 변환
+                  final base64Frames = frames
+                      .map((frame) => base64Encode(frame))
+                      .toList();
+
+                  // 서버로 전송
+                  final sendResult = await TranslateApi.sendFrames(
+                    base64Frames,
+                  );
+                  print('프레임 전송 결과: $sendResult');
+
+                  // 분석 결과 가져오기
+                  await Future.delayed(Duration(seconds: 1)); // 서버 처리 대기
+                  final translateResult = await TranslateApi.translateLatest();
+
+                  final recognizedWord = translateResult?['korean'] ?? '';
+                  final isCorrect =
+                      recognizedWord.toLowerCase().trim() ==
+                      expected.toLowerCase().trim();
+
+                  setState(() {
+                    isAnalyzing = false;
+                    showCamera = false;
                   });
-                }
-                await showDialog(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: isCorrect
-                        ? Text('정답입니다.', style: TextStyle(color: Colors.green))
-                        : Text('오답입니다.', style: TextStyle(color: Colors.red)),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          isCorrect ? 'O' : 'X',
-                          style: TextStyle(
-                            fontSize: 80,
-                            fontWeight: FontWeight.bold,
-                            color: isCorrect ? Colors.green : Colors.red,
-                          ),
+
+                  if (!mounted) return;
+
+                  await showDialog(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: Text(
+                        isCorrect ? '정답입니다!' : '다시 시도해주세요',
+                        style: TextStyle(
+                          color: isCorrect ? Colors.green : Colors.red,
                         ),
-                        !isCorrect
-                            ? SizedBox.shrink()
-                            : Padding(
-                                padding: EdgeInsets.only(top: 10),
-                                child: Text(
-                                  '다시 시도해주세요',
-                                  style: TextStyle(fontSize: 16),
-                                ),
+                      ),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            isCorrect ? '✓' : '✗',
+                            style: TextStyle(
+                              fontSize: 60,
+                              fontWeight: FontWeight.bold,
+                              color: isCorrect ? Colors.green : Colors.red,
+                            ),
+                          ),
+                          SizedBox(height: 16),
+                          Text('예상: $expected'),
+                          Text('인식: $recognizedWord'),
+                          if (!isCorrect)
+                            Padding(
+                              padding: EdgeInsets.only(top: 10),
+                              child: Text(
+                                '다시 시도해주세요',
+                                style: TextStyle(fontSize: 14),
                               ),
+                            ),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Text('확인'),
+                        ),
                       ],
                     ),
-                  ),
-                );
-                setState(() {
-                  isAnalyzing = false;
-                  showCamera = false;
-                });
-                if (isCorrect) {
-                  await Future.delayed(Duration(microseconds: 500));
-                  if (pageIndex < widget.items.length - 1) {
-                    pageCtrl.nextPage(
-                      duration: Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
+                  );
+
+                  if (isCorrect) {
+                    await Future.delayed(Duration(milliseconds: 500));
+                    if (pageIndex < widget.items.length - 1) {
+                      pageCtrl.nextPage(
+                        duration: Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    } else {
+                      await onNext();
+                    }
+                  }
+                } catch (e) {
+                  print('분석 오류: $e');
+                  setState(() {
+                    isAnalyzing = false;
+                    showCamera = false;
+                  });
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('분석 중 오류가 발생했습니다: $e')),
                     );
-                  } else {
-                    await onNext();
                   }
                 }
               },
