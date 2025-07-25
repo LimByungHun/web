@@ -207,7 +207,6 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
                             ),
                           ),
                           SizedBox(height: 16),
-                          Text('예상: $expected'),
                           Text('인식: $recognizedWord'),
                           if (!isCorrect)
                             Padding(

@@ -118,20 +118,20 @@ class TranslateApi {
 
       final newToken = response.headers['x-new-access-token'];
       if (newToken != null && newToken.isNotEmpty) {
-        print("--- 새 액세스 토큰 수신 및 저장 완료.");
+        print("새 액세스 토큰 수신 및 저장 완료.");
         await TokenStorage.setAccessToken(newToken);
       }
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        print("--- 서버 프레임 분석 성공: ${result['status']}");
+        print("서버 프레임 분석 성공: ${result['status']}");
         return result['status'];
       } else {
-        print("--- 서버 프레임 분석 실패: Status ${response.statusCode}");
-        print("--- 서버 응답 본문: ${response.body}");
+        print("서버 프레임 분석 실패: Status ${response.statusCode}");
+        print("서버 응답 본문: ${response.body}");
       }
     } catch (e) {
-      print("--- 프레임 전송 중 예외 발생: $e");
+      print("프레임 전송 중 예외 발생: $e");
     }
 
     return null;
