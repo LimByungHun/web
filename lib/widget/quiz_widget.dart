@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
-import 'package:video_player/video_player.dart';
+import 'package:sign_web/service/animation_api.dart';
+import 'package:sign_web/widget/animation_widget.dart';
 import 'package:sign_web/model/course_model.dart';
 import 'package:sign_web/service/study_api.dart';
 
@@ -33,7 +37,9 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
   bool? answereIcon;
   late String correct;
   List<String> options = [];
-  VideoPlayerController? videoplayer;
+  List<Uint8List>? base64Frames;
+  bool isLoading = false;
+  final GlobalKey<AnimationWidgetState> animationKey = GlobalKey();
 
   @override
   void initState() {
@@ -42,7 +48,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
     setup();
   }
 
-  void setup() {
+  void setup() async {
     final current = quizList[index];
     correct = current['word']?.toString() ?? '';
 
@@ -55,15 +61,20 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
 
     options = [correct, ...allWords.take(3)]..shuffle();
 
-    // videoplayer?.dispose();
-    // videoplayer = VideoPlayerController.networkUrl(
-    //   Uri.parse('http://10.101.170.168/video/${Uri.encodeComponent(correct)}.mp4'),
-    // )
-    //   ..setLooping(true)
-    //   ..setPlaybackSpeed(1.0)
-    //   ..initialize().then((_) {
-    //     if (mounted) setState(() {});
-    //   });
+    setState(() {
+      isLoading = true;
+      base64Frames = null;
+    });
+
+    final result = await AnimationApi.loadAnimation(correct);
+    if (!mounted) return;
+
+    if (result != null) {
+      setState(() {
+        base64Frames = result.map((b64) => base64Decode(b64)).toList();
+      });
+    }
+    setState(() => isLoading = false);
   }
 
   void onOptionSelected(String selected) {
@@ -133,7 +144,6 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
 
   @override
   void dispose() {
-    videoplayer?.dispose();
     super.dispose();
   }
 
@@ -163,7 +173,27 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
                 width: isDesktop ? 500 : screenWidth * 0.8,
                 height: isDesktop ? 320 : 180,
                 color: Colors.black,
-                // ...영상 등
+                child: isLoading
+                    ? Center(child: CircularProgressIndicator())
+                    : (base64Frames != null && base64Frames!.isNotEmpty
+                          ? Column(
+                              children: [
+                                Expanded(
+                                  child: AnimationWidget(
+                                    key: animationKey,
+                                    frames: base64Frames!,
+                                  ),
+                                ),
+                                TextButton.icon(
+                                  onPressed: () {
+                                    animationKey.currentState?.reset();
+                                  },
+                                  icon: Icon(Icons.replay),
+                                  label: Text('다시보기'),
+                                ),
+                              ],
+                            )
+                          : Center(child: Text('영상 없음'))),
               ),
               SizedBox(height: isDesktop ? 32 : 16),
               Text(

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sign_web/service/animation_api.dart';
 import 'package:sign_web/service/translate_api.dart';
 import 'package:sign_web/widget/animation_widget.dart';
 
@@ -72,7 +73,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
       isLoading = true;
       base64Frames = null;
     });
-    final result = await TranslateApi.translate_word_to_video(wordText);
+    final result = await AnimationApi.loadAnimation(wordText);
     if (result != null) {
       setState(() {
         base64Frames = result.map((b64) => base64Decode(b64)).toList();
