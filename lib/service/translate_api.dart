@@ -196,9 +196,47 @@ class TranslateApi {
         final result = jsonDecode(response.body);
         return {
           'korean': result['korean'],
-          'english': result['english'],
-          'japanese': result['japanese'],
-          'chinese': result['chinese'],
+          'english': result['english']['text'] ?? '',
+          'japanese': result['japanese']['text'] ?? '',
+          'chinese': result['chinese']['text'] ?? '',
+        };
+      } else {
+        print("번역 실패: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("요청 오류: $e");
+    }
+
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> translateLatest2() async {
+    final accessToken = await TokenStorage.getAccessToken();
+    final refreshToken = await TokenStorage.getRefreshToken();
+
+    final url = Uri.parse("$baseUrl/study/translate_latest");
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'X-Refresh-Token': refreshToken ?? '',
+        },
+      );
+
+      final newToken = response.headers['x-new-access-token'];
+      if (newToken != null && newToken.isNotEmpty) {
+        await TokenStorage.setAccessToken(newToken);
+      }
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        return {
+          'korean': result['korean'],
+          'english': result['english']['text'] ?? '',
+          'japanese': result['japanese']['text'] ?? '',
+          'chinese': result['chinese']['text'] ?? '',
         };
       } else {
         print("번역 실패: ${response.statusCode}");

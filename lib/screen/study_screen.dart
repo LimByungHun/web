@@ -78,12 +78,20 @@ class StudyScreenState extends State<StudyScreen> {
       setState(() => currentStep++);
     } else {
       context.read<CourseModel>().completeOneDay();
+
+      if (!mounted) return;
+
       if (context.read<CourseModel>().isStepCompleted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('단계 완료')));
+
+        await Future.delayed(const Duration(milliseconds: 500));
       }
-      Navigator.pop(context);
+
+      if (mounted) {
+        GoRouter.of(context).go('/home');
+      }
     }
   }
 

@@ -8,6 +8,7 @@ import 'package:sign_web/widget/animation_widget.dart';
 import 'package:sign_web/service/translate_api.dart';
 import 'package:sign_web/widget/sidebar_widget.dart';
 import 'package:image/image.dart' as img;
+import 'package:flutter/foundation.dart';
 
 class TranslateScreen extends StatefulWidget {
   const TranslateScreen({super.key});
@@ -65,6 +66,51 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       }
     } catch (e) {
       print("프레임 전송 중 오류 발생: $e");
+    }
+  }
+
+  Future<void> startCamera() async {
+    try {
+      final cameras = await availableCameras();
+      final front = cameras.firstWhere(
+        (cam) => cam.lensDirection == CameraLensDirection.front,
+      );
+
+      cameraController = CameraController(
+        front,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+
+      await cameraController!.initialize();
+      if (kIsWeb) {
+        Timer.periodic(Duration(milliseconds: 500), (timer) async {
+          if (!isCameraOn || cameraController == null) {
+            timer.cancel();
+            return;
+          }
+
+          try {
+            final picture = await cameraController!.takePicture();
+            final bytes = await picture.readAsBytes();
+            frameBuffer.add(bytes);
+
+            if (frameBuffer.length >= 30) {
+              await sendFrames(List.from(frameBuffer));
+              frameBuffer.clear();
+            }
+          } catch (e) {
+            print("웹 캡처 오류: $e");
+          }
+        });
+      } else {
+        await cameraController!.startImageStream(onFrameAvailable);
+      }
+      setState(() {
+        isCameraOn = true;
+      });
+    } catch (e) {
+      print("카메라 초기화 실패: $e");
     }
   }
 
@@ -143,9 +189,11 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   }
 
   void toggleCamera() {
-    setState(() {
-      isCameraOn = !isCameraOn;
-    });
+    if (isCameraOn) {
+      stopCamera();
+    } else {
+      startCamera();
+    }
   }
 
   Future<Uint8List?> convertYUV420toJPEG(CameraImage image) async {

@@ -1,8 +1,10 @@
+// lib/widget/sidebar_widget.dart (Tabler 스타일 적용)
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sign_web/service/dictionary_api.dart';
 import 'package:sign_web/service/token_storage.dart';
+import 'package:sign_web/theme/tabler_theme.dart';
 
 class Sidebar extends StatefulWidget {
   final int? initialIndex;
@@ -13,7 +15,6 @@ class Sidebar extends StatefulWidget {
 }
 
 class SidebarState extends State<Sidebar> {
-  bool isExtended = false;
   int selectedIndex = 0;
 
   @override
@@ -32,96 +33,228 @@ class SidebarState extends State<Sidebar> {
     '/user',
   ];
 
+  static const List<SidebarItem> menuItems = [
+    SidebarItem(icon: Icons.home_outlined, activeIcon: Icons.home, label: '홈'),
+    SidebarItem(
+      icon: Icons.calendar_today_outlined,
+      activeIcon: Icons.calendar_today,
+      label: '캘린더',
+    ),
+    SidebarItem(
+      icon: Icons.search_outlined,
+      activeIcon: Icons.search,
+      label: '사전',
+    ),
+    SidebarItem(
+      icon: Icons.g_translate_outlined,
+      activeIcon: Icons.g_translate,
+      label: '번역',
+    ),
+    SidebarItem(
+      icon: Icons.menu_book_outlined,
+      activeIcon: Icons.menu_book,
+      label: '학습코스',
+    ),
+    SidebarItem(
+      icon: Icons.bookmark_border_outlined,
+      activeIcon: Icons.bookmark,
+      label: '북마크',
+    ),
+    SidebarItem(
+      icon: Icons.person_outline,
+      activeIcon: Icons.person,
+      label: '설정',
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    return NavigationRail(
-      extended: isExtended,
-      labelType: NavigationRailLabelType.none,
-      leading: IconButton(
-        icon: Icon(isExtended ? Icons.arrow_back_ios : Icons.menu),
-        onPressed: () {
-          setState(() {
-            isExtended = !isExtended;
-          });
-        },
+    return Container(
+      width: 240,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(right: BorderSide(color: TablerColors.border)),
       ),
-      selectedIndex: selectedIndex,
-      onDestinationSelected: (idx) async {
-        setState(() {
-          selectedIndex = idx;
-        });
-        final path = routePaths[idx];
-        if (path == '/dictionary') {
-          try {
-            final wordData = await DictionaryApi.fetchWords();
-            final userId = await TokenStorage.getUserID();
+      child: Column(
+        children: [
+          // 로고/제목 영역
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: TablerColors.border)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: TablerColors.primary,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.sign_language,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text(
+                  '수어 학습',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: TablerColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
 
-            GoRouter.of(context).go(
-              '/dictionary',
-              extra: {
-                'words': wordData.words,
-                'wordIdMap': wordData.wordIDMap,
-                'userID': userId ?? '',
+          // 메뉴 항목들
+          Expanded(
+            child: ListView.builder(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              itemCount: menuItems.length,
+              itemBuilder: (context, index) {
+                final item = menuItems[index];
+                final isSelected = selectedIndex == index;
+
+                return Container(
+                  margin: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () async {
+                        setState(() => selectedIndex = index);
+                        await _handleNavigation(index);
+                      },
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? TablerColors.primary.withOpacity(0.1)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isSelected ? item.activeIcon : item.icon,
+                              size: 20,
+                              color: isSelected
+                                  ? TablerColors.primary
+                                  : TablerColors.textSecondary,
+                            ),
+                            SizedBox(width: 12),
+                            Text(
+                              item.label,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: isSelected
+                                    ? FontWeight.w600
+                                    : FontWeight.w500,
+                                color: isSelected
+                                    ? TablerColors.primary
+                                    : TablerColors.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
               },
-            );
-          } catch (e) {
-            Fluttertoast.showToast(msg: '사전 로딩 오류');
-          }
-        } else {
-          GoRouter.of(context).go(path);
-        }
-      },
-      destinations: const [
-        NavigationRailDestination(
-          icon: Icon(Icons.home),
-          label: Text(
-            '홈 화면',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
           ),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.local_fire_department),
-          label: Text(
-            '캘린더',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+
+          // 하단 영역 (사용자 정보 등)
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: TablerColors.border)),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: TablerColors.primary.withOpacity(0.1),
+                  child: Icon(
+                    Icons.person,
+                    size: 18,
+                    color: TablerColors.primary,
+                  ),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '사용자',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: TablerColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        '온라인',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: TablerColors.success,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.search),
-          label: Text(
-            '검색',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.g_translate),
-          label: Text(
-            '번역',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.menu_book_rounded),
-          label: Text(
-            '학습코스',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.bookmark_border),
-          label: Text(
-            '북마크',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.person),
-          label: Text(
-            '사용자 설정',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
+
+  Future<void> _handleNavigation(int index) async {
+    final path = routePaths[index];
+
+    if (path == '/dictionary') {
+      try {
+        final wordData = await DictionaryApi.fetchWords();
+        final userId = await TokenStorage.getUserID();
+
+        GoRouter.of(context).go(
+          '/dictionary',
+          extra: {
+            'words': wordData.words,
+            'wordIdMap': wordData.wordIDMap,
+            'userID': userId ?? '',
+          },
+        );
+      } catch (e) {
+        Fluttertoast.showToast(msg: '사전 로딩 오류');
+      }
+    } else {
+      GoRouter.of(context).go(path);
+    }
+  }
+}
+
+class SidebarItem {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+
+  const SidebarItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+  });
 }
