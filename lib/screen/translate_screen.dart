@@ -8,6 +8,7 @@ import 'package:sign_web/widget/animation_widget.dart';
 import 'package:sign_web/service/translate_api.dart';
 import 'package:sign_web/widget/sidebar_widget.dart';
 import 'package:image/image.dart' as img;
+import 'package:flutter/foundation.dart';
 
 class TranslateScreen extends StatefulWidget {
   const TranslateScreen({super.key});
@@ -51,7 +52,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   }
 
   Future<void> sendFrames(List<Uint8List> frames) async {
-    print("--- 프레임 ${frames.length}개 서버로 전송 시도...");
+    print("프레임 ${frames.length}개 서버로 전송 시도...");
     final List<String> base64Frames = frames
         .map((frame) => base64Encode(frame))
         .toList();
@@ -59,12 +60,57 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     try {
       final result = await TranslateApi.sendFrames(base64Frames);
       if (result != null) {
-        print("--- 서버 응답 성공: $result");
+        print("서버 응답 성공: $result");
       } else {
-        print("--- 서버 응답 실패: result is null");
+        print("서버 응답 실패: result is null");
       }
     } catch (e) {
-      print("--- 프레임 전송 중 오류 발생: $e");
+      print("프레임 전송 중 오류 발생: $e");
+    }
+  }
+
+  Future<void> startCamera() async {
+    try {
+      final cameras = await availableCameras();
+      final front = cameras.firstWhere(
+        (cam) => cam.lensDirection == CameraLensDirection.front,
+      );
+
+      cameraController = CameraController(
+        front,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+
+      await cameraController!.initialize();
+      if (kIsWeb) {
+        Timer.periodic(Duration(milliseconds: 500), (timer) async {
+          if (!isCameraOn || cameraController == null) {
+            timer.cancel();
+            return;
+          }
+
+          try {
+            final picture = await cameraController!.takePicture();
+            final bytes = await picture.readAsBytes();
+            frameBuffer.add(bytes);
+
+            if (frameBuffer.length >= 30) {
+              await sendFrames(List.from(frameBuffer));
+              frameBuffer.clear();
+            }
+          } catch (e) {
+            print("웹 캡처 오류: $e");
+          }
+        });
+      } else {
+        await cameraController!.startImageStream(onFrameAvailable);
+      }
+      setState(() {
+        isCameraOn = true;
+      });
+    } catch (e) {
+      print("카메라 초기화 실패: $e");
     }
   }
 
@@ -74,33 +120,33 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     try {
       // 스트림 중지 (예외 없이 진행되도록)
       if (cameraController!.value.isStreamingImages) {
-        print("--- 이미지 스트림 중지 시도...");
+        print("이미지 스트림 중지 시도...");
         await cameraController!.stopImageStream();
-        print("--- 이미지 스트림 중지 완료");
+        print("이미지 스트림 중지 완료");
       }
     } catch (e) {
-      print("--- 이미지 스트림 중지 오류: $e");
+      print("이미지 스트림 중지 오류: $e");
     }
 
     try {
       // 영상 녹화 중이라면 정지
       if (cameraController!.value.isRecordingVideo) {
-        print("--- 영상 녹화 중지 시도...");
+        print("영상 녹화 중지 시도...");
         final file = await cameraController!.stopVideoRecording();
         capturedVideo = file;
-        print("--- 영상 녹화 완료: ${file.path}");
+        print("영상 녹화 완료: ${file.path}");
       }
     } catch (e) {
-      print("--- 녹화 중지 오류: $e");
+      print("녹화 중지 오류: $e");
     }
 
     try {
       // 컨트롤러 dispose
-      print("--- 컨트롤러 dispose 시작...");
+      print("컨트롤러 dispose 시작...");
       await cameraController!.dispose();
-      print("--- 컨트롤러 dispose 완료");
+      print("컨트롤러 dispose 완료");
     } catch (e) {
-      print("--- 컨트롤러 dispose 오류: $e");
+      print("컨트롤러 dispose 오류: $e");
     } finally {
       cameraController = null;
     }
@@ -126,10 +172,10 @@ class TranslateScreenWebState extends State<TranslateScreen> {
           frameBuffer.clear();
         }
       } else {
-        print("--- JPEG 변환 실패: convertYUV420toJPEG에서 null 반환");
+        print("JPEG 변환 실패: convertYUV420toJPEG에서 null 반환");
       }
     } catch (e) {
-      print("--- 프레임 처리 오류 (YUV->JPEG): $e");
+      print("프레임 처리 오류 (YUV->JPEG): $e");
     } finally {
       isProcessingFrame = false;
     }
@@ -143,9 +189,11 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   }
 
   void toggleCamera() {
-    setState(() {
-      isCameraOn = !isCameraOn;
-    });
+    if (isCameraOn) {
+      stopCamera();
+    } else {
+      startCamera();
+    }
   }
 
   Future<Uint8List?> convertYUV420toJPEG(CameraImage image) async {
@@ -193,7 +241,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       final encodedBytes = img.encodeJpg(imgData, quality: 80);
       return Uint8List.fromList(encodedBytes);
     } catch (e) {
-      print("--- convertYUV420toJPEG 오류: $e");
+      print("convertYUV420toJPEG 오류: $e");
       return null;
     }
   }

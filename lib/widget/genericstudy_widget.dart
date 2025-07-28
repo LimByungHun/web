@@ -47,8 +47,9 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
 
   Future<void> onNext() async {
     if (pageIndex < widget.items.length - 1) {
-      pageCtrl.nextPage(
-        duration: Duration(milliseconds: 300),
+      // 페이지 넘기기
+      await pageCtrl.nextPage(
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
     } else {
@@ -59,11 +60,26 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
         print("학습 완료 저장 실패: $e");
       }
 
+      // 현재 context가 위젯 트리에서 여전히 살아있는지 확인
+      if (!mounted) return;
+
+      // 혹시 다이얼로그가 떠 있었으면 먼저 닫고 약간 대기
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop(); // 다이얼로그 닫기
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+
+      // 상위 StudyScreen의 상태 접근해서 nextStep 호출
       final screenState = context.findAncestorStateOfType<StudyScreenState>();
       if (screenState != null) {
-        screenState.nextStep();
+        await Future.delayed(const Duration(milliseconds: 100));
+        screenState.nextStep(); // 여기서 GoRouter로 이동 처리됨
       } else {
-        GoRouter.of(context).go('/home');
+        // 아니면 직접 홈으로 이동
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (mounted) {
+          GoRouter.of(context).go('/home');
+        }
       }
     }
   }
@@ -128,16 +144,23 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
                     ),
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: () {
-                    animationKey.currentState?.reset();
-                  },
-                  icon: Icon(Icons.replay),
-                  label: Text('다시보기'),
-                ),
               ],
             )
           : const Center(child: CircularProgressIndicator()),
+    );
+
+    Column(
+      children: [
+        videoWidget,
+        SizedBox(height: 8),
+        TextButton.icon(
+          onPressed: () {
+            animationKey.currentState?.reset();
+          },
+          icon: Icon(Icons.replay),
+          label: Text('다시보기'),
+        ),
+      ],
     );
 
     Widget cameraControlWidget = Column(
@@ -151,28 +174,24 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
             width: adjustedSize,
             height: adjustedSize,
             child: CameraWidget(
-              continuousMode: true, // 연속 모드로 프레임들을 받음
+              continuousMode: true,
               onFramesAvailable: (frames) async {
-                // 프레임들이 준비되면 바로 서버로 전송
                 setState(() => isAnalyzing = true);
 
                 try {
                   final expected = widget.items[pageIndex];
 
-                  // 프레임들을 base64로 변환
                   final base64Frames = frames
                       .map((frame) => base64Encode(frame))
                       .toList();
 
-                  // 서버로 전송
                   final sendResult = await TranslateApi.sendFrames(
                     base64Frames,
                   );
                   print('프레임 전송 결과: $sendResult');
 
-                  // 분석 결과 가져오기
-                  await Future.delayed(Duration(seconds: 1)); // 서버 처리 대기
-                  final translateResult = await TranslateApi.translateLatest();
+                  await Future.delayed(Duration(seconds: 1));
+                  final translateResult = await TranslateApi.translateLatest2();
 
                   final recognizedWord = translateResult?['korean'] ?? '';
                   final isCorrect =
@@ -207,7 +226,6 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
                             ),
                           ),
                           SizedBox(height: 16),
-                          Text('예상: $expected'),
                           Text('인식: $recognizedWord'),
                           if (!isCorrect)
                             Padding(
@@ -291,7 +309,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
                         const SizedBox(height: 10),
                         if (isWide)
                           ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 1200),
+                            constraints: const BoxConstraints(maxWidth: 2000),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -310,11 +328,6 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
                               cameraControlWidget,
                             ],
                           ),
-                        const SizedBox(height: 10),
-                        Text(
-                          '$item 수어 표현 방법 적어야함',
-                          style: const TextStyle(fontSize: 20),
-                        ),
                       ],
                     ),
                   ),

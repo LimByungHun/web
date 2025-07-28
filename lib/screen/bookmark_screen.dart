@@ -239,7 +239,7 @@ class _BookmarkState extends State<Bookmark> {
                           ],
                         ),
                       ),
-                      // 단어 리스트 + 인덱스바
+                      // 단어 리스트
                       Expanded(
                         flex: 5,
                         child: Stack(

@@ -153,7 +153,6 @@ class HomeScreenState extends State<HomeScreen> {
         final cardPadding = 16.0;
 
         if (isVertical) {
-          // 세로(모바일/좁은화면) : 학습코스 아래에 복습, 통계카드를 Row로 좌우 배치
           return Column(
             children: [
               Expanded(
