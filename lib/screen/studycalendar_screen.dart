@@ -9,10 +9,10 @@ class StudycalendarScreen extends StatefulWidget {
   const StudycalendarScreen({super.key});
 
   @override
-  State<StudycalendarScreen> createState() => _StudycalendarScreenState();
+  State<StudycalendarScreen> createState() => StudycalendarScreenState();
 }
 
-class _StudycalendarScreenState extends State<StudycalendarScreen> {
+class StudycalendarScreenState extends State<StudycalendarScreen> {
   final DateTime today = normalize(DateTime.now());
   DateTime focusedDay = DateTime.now();
   Set<DateTime> learnedDate = {};
