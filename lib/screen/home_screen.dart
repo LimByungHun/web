@@ -3,15 +3,13 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_web/model/course_model.dart';
 import 'package:sign_web/service/study_api.dart';
-import 'package:sign_web/widget/coursestepcard_widget.dart';
-import 'package:sign_web/widget/review_widget.dart';
+import 'package:sign_web/theme/tabler_theme.dart';
 import 'package:sign_web/widget/sidebar_widget.dart';
-import 'package:sign_web/widget/stetscard_widget.dart';
+import 'package:sign_web/widget/daybar_widget.dart';
+import 'package:sign_web/widget/tablerui_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
-  static DateTime normalize(DateTime d) => DateTime(d.year, d.month, d.day);
 
   @override
   State<HomeScreen> createState() => HomeScreenState();
@@ -55,59 +53,311 @@ class HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final courseModel = context.watch<CourseModel>();
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
 
-    final contentPadding = screenWidth * 0.05;
-    final headerHeight = screenHeight * 0.12;
+    if (isLoading) {
+      return Scaffold(
+        backgroundColor: TablerColors.background,
+        body: Center(
+          child: CircularProgressIndicator(color: TablerColors.primary),
+        ),
+      );
+    }
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SafeArea(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: TablerColors.background,
+      body: SafeArea(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Sidebar(initialIndex: 0),
+            VerticalDivider(width: 1, color: TablerColors.border),
+
+            Expanded(
+              child: Column(
                 children: [
-                  Sidebar(initialIndex: 0),
-                  VerticalDivider(width: 1, color: Colors.grey[300]),
+                  buildResponsiveHeader(courseModel),
+
                   Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final width = MediaQuery.of(context).size.width;
+
+                        if (width > 1200) {
+                          return Padding(
+                            padding: EdgeInsets.all(16),
+                            child: buildResponsiveContent(courseModel),
+                          );
+                        } else {
+                          return SingleChildScrollView(
+                            padding: EdgeInsets.all(16),
+                            child: buildResponsiveContent(courseModel),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildResponsiveHeader(CourseModel courseModel) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: TablerColors.border)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 600;
+
+          if (isNarrow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [buildHeaderTitle(courseModel), SizedBox(height: 12)],
+            );
+          } else {
+            return Row(
+              children: [Expanded(child: buildHeaderTitle(courseModel))],
+            );
+          }
+        },
+      ),
+    );
+  }
+
+  Widget buildHeaderTitle(CourseModel courseModel) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          courseModel.selectedCourse ?? '학습 코스를 선택해 주세요',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: TablerColors.textPrimary,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (courseModel.selectedCourse != null)
+          Text(
+            '${courseModel.currentDay}/${courseModel.totalDays} 단계',
+            style: TextStyle(fontSize: 14, color: TablerColors.textSecondary),
+          ),
+      ],
+    );
+  }
+
+  Widget buildHeaderButton(String text, IconData icon, String route) {
+    return TablerButton(
+      text: text,
+      icon: icon,
+      outline: true,
+      small: true,
+      onPressed: () => GoRouter.of(context).go(route),
+    );
+  }
+
+  Widget buildResponsiveContent(CourseModel courseModel) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+
+        if (width > 1200) {
+          // 전체화면: 기존 3분할 레이아웃
+          return buildDesktopLayout(courseModel);
+        } else {
+          // 중간/작은 화면: 학습통계를 진행률 옆으로 배치
+          return buildTabletLayoutImproved(courseModel);
+        }
+      },
+    );
+  }
+
+  Widget buildDesktopLayout(CourseModel courseModel) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 55,
+          child: Column(
+            children: [
+              SizedBox(height: 320, child: buildCourseCard(courseModel)),
+              SizedBox(height: 20),
+              Expanded(child: buildStatsCard()),
+            ],
+          ),
+        ),
+        SizedBox(width: 20),
+        Expanded(flex: 30, child: buildReviewCard(courseModel)),
+      ],
+    );
+  }
+
+  Widget buildTabletLayoutImproved(CourseModel courseModel) {
+    return Column(
+      children: [
+        SizedBox(height: 280, child: buildCourseCardWithStats(courseModel)),
+        SizedBox(height: 16),
+        SizedBox(width: double.infinity, child: buildReviewCard(courseModel)),
+        SizedBox(width: double.infinity, child: buildStatsCard2()),
+      ],
+    );
+  }
+
+  Widget buildStatsCard2() {
+    return TablerStatsCard2(
+      learnedWords: learnedWordsCount,
+      streakDays: streakDays,
+      overallPercent: overallPercent,
+    );
+  }
+
+  Widget buildCourseCard(CourseModel courseModel) {
+    final hasCourse = courseModel.selectedCourse != null;
+
+    return TablerCard(
+      title: hasCourse ? '현재 학습 코스' : '학습 시작하기',
+      child: hasCourse
+          ? Column(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Container(
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: TablerColors.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     child: Column(
                       children: [
-                        Container(
-                          width: double.infinity,
-                          height: headerHeight > 80 ? 80 : headerHeight,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: contentPadding,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(
-                                color: Colors.grey[200]!,
-                                width: 1,
-                              ),
-                            ),
-                          ),
-                          child: buildHeader(
-                            screenWidth,
-                            headerHeight > 80 ? 80 : headerHeight,
-                          ),
+                        DaybarWidget(
+                          totalDays: courseModel.totalDays,
+                          currentDay: courseModel.currentDay,
+                          steps: courseModel.steps,
                         ),
-                        Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.all(contentPadding),
-                            child: buildUnifiedContent(
-                              courseModel,
-                              screenWidth,
-                              screenHeight -
-                                  headerHeight -
-                                  (contentPadding * 2),
-                            ),
+                        SizedBox(height: 4),
+                        LinearProgressIndicator(
+                          value: courseModel.currentDay / courseModel.totalDays,
+                          backgroundColor: TablerColors.border,
+                          valueColor: AlwaysStoppedAnimation(
+                            TablerColors.primary,
                           ),
                         ),
                       ],
                     ),
+                  ),
+                ),
+
+                SizedBox(height: 20),
+
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isNarrow = constraints.maxWidth < 300;
+
+                    if (isNarrow) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TablerButton(
+                            text: '학습하기',
+                            icon: Icons.play_arrow,
+                            onPressed:
+                                courseModel.currentDay <= courseModel.totalDays
+                                ? () {
+                                    final safeDay = courseModel.currentDay < 1
+                                        ? 1
+                                        : courseModel.currentDay;
+                                    GoRouter.of(context).go(
+                                      '/study',
+                                      extra: {
+                                        'course': courseModel.selectedCourse!,
+                                        'day': safeDay,
+                                      },
+                                    );
+                                  }
+                                : null,
+                          ),
+                          SizedBox(height: 12),
+                          TablerButton(
+                            text: '코스 변경',
+                            outline: true,
+                            onPressed: () => GoRouter.of(context).go('/course'),
+                          ),
+                        ],
+                      );
+                    } else {
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: TablerButton(
+                              text: '학습하기',
+                              icon: Icons.play_arrow,
+                              onPressed:
+                                  courseModel.currentDay <=
+                                      courseModel.totalDays
+                                  ? () {
+                                      final safeDay = courseModel.currentDay < 1
+                                          ? 1
+                                          : courseModel.currentDay;
+                                      GoRouter.of(context).go(
+                                        '/study',
+                                        extra: {
+                                          'course': courseModel.selectedCourse!,
+                                          'day': safeDay,
+                                        },
+                                      );
+                                    }
+                                  : null,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: TablerButton(
+                              text: '코스 변경',
+                              outline: true,
+                              onPressed: () =>
+                                  GoRouter.of(context).go('/course'),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                  },
+                ),
+              ],
+            )
+          : Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.school_outlined,
+                    size: 64,
+                    color: TablerColors.textSecondary,
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    '학습 코스를 선택하여\n수어 학습을 시작해보세요',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: TablerColors.textSecondary,
+                    ),
+                  ),
+                  SizedBox(height: 20),
+                  TablerButton(
+                    text: '학습 코스 선택',
+                    icon: Icons.arrow_forward,
+                    onPressed: () => GoRouter.of(context).go('/course'),
                   ),
                 ],
               ),
@@ -115,317 +365,297 @@ class HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget buildHeader(double contentWidth, double headerHeight) {
-    final courseModel = context.watch<CourseModel>();
-    final title = courseModel.selectedCourse ?? '학습 코스를 선택해 주세요';
-
-    double fontSize = headerHeight * 0.22;
-    if (fontSize > 28) fontSize = 28;
-    if (fontSize < 18) fontSize = 18;
-
-    return Container(
-      alignment: Alignment.center,
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: fontSize,
-          fontWeight: FontWeight.bold,
-          color: Colors.black87,
-        ),
-        textAlign: TextAlign.center,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        softWrap: false,
-      ),
-    );
-  }
-
-  Widget buildUnifiedContent(
-    CourseModel courseModel,
-    double width,
-    double height,
-  ) {
+  Widget buildCourseCardWithStats(CourseModel courseModel) {
     final hasCourse = courseModel.selectedCourse != null;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isVertical = constraints.maxWidth < 1000;
-        final cardPadding = 16.0;
-
-        if (isVertical) {
-          return Column(
-            children: [
-              Expanded(
-                flex: 45,
-                child: Container(
-                  width: double.infinity,
-                  margin: EdgeInsets.only(bottom: height * 0.03),
-                  child: hasCourse
-                      ? CoursestepcardWidget(
-                          boxHeight: height * 0.65,
-                          horizontalPadding: 0,
-                          selectedCourse: courseModel.selectedCourse,
-                          currentDay: courseModel.currentDay,
-                          totalDays: courseModel.totalDays,
-                          steps: courseModel.steps,
-                          onSelectCourse: (_) async {
-                            await courseModel.loadFromPrefs();
-                          },
-                          onStartStudy: (day) {
-                            GoRouter.of(context).go(
-                              '/study',
-                              extra: {
-                                'course': courseModel.selectedCourse!,
-                                'day': day,
-                              },
-                            );
-                          },
-                        )
-                      : buildNoCourseCard(height * 0.65, cardPadding),
-                ),
-              ),
-              Expanded(
-                flex: 50,
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 50,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withValues(alpha: 0.1),
-                              spreadRadius: 1,
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: hasCourse
-                            ? ReviewCard()
-                            : Center(
-                                child: Text(
-                                  '학습 코스 선택 시 복습 카드가 표시됩니다.',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                      ),
-                    ),
-                    SizedBox(width: width * 0.025),
-                    Expanded(
-                      flex: 50,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withValues(alpha: 0.1),
-                              spreadRadius: 1,
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        // child: hasCourse
-                        //     ? StetscardWidget(
-                        //         learnedWords: learnedWordsCount,
-                        //         streakDays: streakDays,
-                        //         overallPercent: overallPercent,
-                        //       )
-                        //     : Center(
-                        //         child: Text(
-                        //           '학습 코스 선택 시 통계가 표시됩니다.',
-                        //           style: TextStyle(
-                        //             color: Colors.grey,
-                        //             fontSize: 16,
-                        //           ),
-                        //         ),
-                        //       ),
-                        child: StetscardWidget(
-                          learnedWords: learnedWordsCount,
-                          streakDays: streakDays,
-                          overallPercent: overallPercent,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        } else {
-          // 전체화면(가로): 학습코스(왼쪽 위), 통계(왼쪽 아래), 복습(오른쪽)
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 55,
-                child: Column(
-                  children: [
-                    Expanded(
-                      flex: 60,
-                      child: Container(
-                        width: double.infinity,
-                        margin: EdgeInsets.only(bottom: height * 0.02),
-                        child: hasCourse
-                            ? CoursestepcardWidget(
-                                boxHeight: height * 0.65,
-                                horizontalPadding: 0,
-                                selectedCourse: courseModel.selectedCourse,
-                                currentDay: courseModel.currentDay,
-                                totalDays: courseModel.totalDays,
-                                steps: courseModel.steps,
-                                onSelectCourse: (_) async {
-                                  await courseModel.loadFromPrefs();
-                                },
-                                onStartStudy: (day) {
-                                  GoRouter.of(context).push(
-                                    '/study',
-                                    extra: {
-                                      'course': courseModel.selectedCourse!,
-                                      'day': day,
-                                    },
-                                  );
-                                },
-                              )
-                            : buildNoCourseCard(height * 0.65, cardPadding),
-                      ),
-                    ),
-                    SizedBox(height: height * 0.02),
-                    Expanded(
-                      flex: 40,
-                      child: Container(
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withValues(alpha: 0.1),
-                              spreadRadius: 1,
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        // child: hasCourse
-                        //     ? StetscardWidget(
-                        //         learnedWords: learnedWordsCount,
-                        //         streakDays: streakDays,
-                        //         overallPercent: overallPercent,
-                        //       )
-                        //     : Center(
-                        //         child: Text(
-                        //           '학습 코스 선택 시 통계가 표시됩니다.',
-                        //           style: TextStyle(
-                        //             color: Colors.grey,
-                        //             fontSize: 16,
-                        //           ),
-                        //         ),
-                        //       ),
-                        child: StetscardWidget(
-                          learnedWords: learnedWordsCount,
-                          streakDays: streakDays,
-                          overallPercent: overallPercent,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(width: width * 0.025),
-              Expanded(
-                flex: 30,
-                child: Container(
-                  width: double.infinity,
+    return TablerCard(
+      title: hasCourse ? '현재 학습 코스' : '학습 시작하기',
+      padding: EdgeInsets.all(12), // 패딩 줄임
+      child: hasCourse
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 상단: 진행 단계
+                Container(
+                  height: 100, // 고정 높이
+                  padding: EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withValues(alpha: 0.1),
-                        spreadRadius: 1,
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
+                    color: TablerColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Column(
+                    children: [
+                      // DayBar - 높이 제한
+                      SizedBox(
+                        height: 40,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: DaybarWidget(
+                            totalDays: courseModel.totalDays,
+                            currentDay: courseModel.currentDay,
+                            steps: courseModel.steps,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      // 진행률과 통계
+                      SizedBox(
+                        height: 44, // 고정 높이
+                        child: Row(
+                          children: [
+                            // 왼쪽: 진행률
+                            Expanded(
+                              flex: 2,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '전체 진행률',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: TablerColors.textSecondary,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  LinearProgressIndicator(
+                                    value:
+                                        courseModel.currentDay /
+                                        courseModel.totalDays,
+                                    backgroundColor: TablerColors.border,
+                                    valueColor: AlwaysStoppedAnimation(
+                                      TablerColors.primary,
+                                    ),
+                                    minHeight: 4,
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    '${((courseModel.currentDay / courseModel.totalDays) * 100).round()}% 완료',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: TablerColors.textPrimary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(width: 12),
+                            // 오른쪽: 통계
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                buildCompactStatItem(
+                                  '단어',
+                                  '$learnedWordsCount개',
+                                  TablerColors.success,
+                                  Icons.school,
+                                ),
+                                SizedBox(width: 6),
+                                buildCompactStatItem(
+                                  '연속',
+                                  '$streakDays일',
+                                  TablerColors.warning,
+                                  Icons.local_fire_department,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                  child: hasCourse
-                      ? ReviewCard()
-                      : Center(
-                          child: Text(
-                            '학습 코스 선택 시 복습 카드가 표시됩니다.',
-                            style: TextStyle(color: Colors.grey, fontSize: 16),
-                          ),
-                        ),
                 ),
+
+                SizedBox(height: 8),
+
+                // 하단: 버튼들
+                SizedBox(
+                  height: 36, // 버튼 높이 고정
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TablerButton(
+                          text: '학습하기',
+                          icon: Icons.play_arrow,
+                          small: true,
+                          onPressed:
+                              courseModel.currentDay <= courseModel.totalDays
+                              ? () {
+                                  final safeDay = courseModel.currentDay < 1
+                                      ? 1
+                                      : courseModel.currentDay;
+                                  GoRouter.of(context).go(
+                                    '/study',
+                                    extra: {
+                                      'course': courseModel.selectedCourse!,
+                                      'day': safeDay,
+                                    },
+                                  );
+                                }
+                              : null,
+                        ),
+                      ),
+                      SizedBox(width: 6),
+                      Expanded(
+                        child: TablerButton(
+                          text: '코스 변경',
+                          outline: true,
+                          small: true,
+                          onPressed: () => GoRouter.of(context).go('/course'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            )
+          : SizedBox(
+              height: 160, // 고정 높이
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.school_outlined,
+                    size: 40,
+                    color: TablerColors.textSecondary,
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '학습 코스를 선택하여\n수어 학습을 시작해보세요',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: TablerColors.textSecondary,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  TablerButton(
+                    text: '학습 코스 선택',
+                    icon: Icons.arrow_forward,
+                    small: true,
+                    onPressed: () => GoRouter.of(context).go('/course'),
+                  ),
+                ],
               ),
-            ],
-          );
-        }
-      },
+            ),
     );
   }
 
-  Widget buildNoCourseCard(double cardHeight, double cardPadding) {
-    return Container(
-      height: cardHeight,
-      margin: EdgeInsets.all(cardPadding),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            spreadRadius: 1,
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+  Widget buildCompactStatItem(
+    String label,
+    String value,
+    Color color,
+    IconData icon,
+  ) {
+    return SizedBox(
+      width: 50,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: color.withOpacity(0.2)),
+            ),
+            child: Icon(icon, color: color, size: 10),
+          ),
+          SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+              color: TablerColors.textPrimary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            label,
+            style: TextStyle(fontSize: 6, color: TablerColors.textSecondary),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.school_outlined,
-              size: cardHeight * 0.3,
-              color: Colors.grey[400],
-            ),
-            SizedBox(height: cardHeight * 0.05),
-            SizedBox(
-              width: 400,
-              height: 56,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  elevation: 3,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+    );
+  }
+
+  Widget buildStatsCard() {
+    return TablerStatsCard(
+      learnedWords: learnedWordsCount,
+      streakDays: streakDays,
+      overallPercent: overallPercent,
+    );
+  }
+
+  Widget buildReviewCard(CourseModel courseModel) {
+    final courseWordsMap = courseModel.getCompletedCourseStep5Words();
+
+    return TablerCard(
+      title: '복습하기',
+      child: Container(
+        constraints: BoxConstraints(minHeight: 150),
+        child: courseWordsMap.isEmpty
+            ? Container(
+                height: 150,
+                alignment: Alignment.center,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.quiz_outlined,
+                      size: 48,
+                      color: TablerColors.textSecondary,
+                    ),
+                    SizedBox(height: 12),
+                    Text(
+                      '복습할 내용이 없습니다',
+                      style: TextStyle(color: TablerColors.textSecondary),
+                    ),
+                  ],
                 ),
-                onPressed: () async {
-                  await GoRouter.of(context).push('/course');
-                  setState(() {});
-                },
-                child: Text(
-                  '학습 코스를 선택해 주세요',
-                  style: TextStyle(
-                    fontSize: cardHeight * 0.08 > 22 ? 22 : cardHeight * 0.08,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[700],
-                  ),
-                ),
+              )
+            : Column(
+                children: courseWordsMap.entries.take(3).map((entry) {
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: Container(
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: TablerColors.border),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${entry.key} 복습',
+                              style: TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                          TablerButton(
+                            text: '시작',
+                            small: true,
+                            onPressed: () => GoRouter.of(context).push(
+                              '/review',
+                              extra: {
+                                'words': entry.value,
+                                'title': '${entry.key} 복습 퀴즈',
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
-            ),
-          ],
-        ),
       ),
     );
   }

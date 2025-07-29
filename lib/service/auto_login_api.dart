@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-const String baseUrl = 'http://10.101.170.168';
+const String baseUrl = 'http://10.101.170.12';
 
 class AutoLoginApi {
   static Future<bool> autoLogin(String refreshToken) async {

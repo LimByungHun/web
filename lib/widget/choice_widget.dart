@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:sign_web/theme/tabler_theme.dart';
+import 'package:sign_web/widget/tablerui_widget.dart';
 
 class ChoiceWidget extends StatefulWidget {
   final String description;
@@ -19,34 +21,55 @@ class ChoiceWidgetState extends State<ChoiceWidget> {
   bool expanded = true;
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-      padding: EdgeInsets.all(12),
-      margin: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(10),
+        color: TablerColors.info.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: TablerColors.info.withOpacity(0.3)),
       ),
-      width: double.infinity,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onClose,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(widget.description, style: TextStyle(fontSize: 15)),
-            ),
+          Row(
+            children: [
+              Icon(Icons.info_outline, size: 18, color: TablerColors.info),
+
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.description,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: TablerColors.textPrimary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.close, size: 18),
+                onPressed: widget.onClose,
+                splashRadius: 18,
+              ),
+            ],
           ),
           SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton(
-              onPressed: widget.onSelect,
-              child: Text("학습 시작"),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TablerButton(
+                text: '취소',
+                outline: true,
+                small: true,
+                onPressed: widget.onClose,
+              ),
+              TablerButton(
+                text: '학습 시작',
+                small: true,
+                onPressed: widget.onSelect,
+              ),
+            ],
           ),
         ],
       ),

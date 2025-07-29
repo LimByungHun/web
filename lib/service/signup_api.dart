@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-const String baseUrl = 'http://10.101.170.168';
+const String baseUrl = 'http://10.101.170.12';
 
 Future<Map<String, dynamic>> checkID(String userID) async {
   final url = Uri.parse('$baseUrl/user/check_id?id=$userID');
