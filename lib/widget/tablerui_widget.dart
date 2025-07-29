@@ -228,7 +228,7 @@ class TablerStatsCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _buildStatItem(
+                child: buildStatItem(
                   '학습한 단어',
                   '$learnedWords개',
                   TablerColors.success,
@@ -237,7 +237,7 @@ class TablerStatsCard extends StatelessWidget {
               ),
               SizedBox(width: 16),
               Expanded(
-                child: _buildStatItem(
+                child: buildStatItem(
                   '연속 학습',
                   '$streakDays일',
                   TablerColors.warning,
@@ -251,14 +251,135 @@ class TablerStatsCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatItem(
-    String label,
-    String value,
-    Color color,
-    IconData icon,
-  ) {
+  Widget buildStatItem(String label, String value, Color color, IconData icon) {
     return Container(
       padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: TablerColors.textPrimary,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, color: TablerColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TablerStatsCard2 extends StatelessWidget {
+  final int learnedWords;
+  final int streakDays;
+  final double overallPercent;
+
+  const TablerStatsCard2({
+    super.key,
+    required this.learnedWords,
+    required this.streakDays,
+    required this.overallPercent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TablerCard(
+      title: '학습 통계',
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        // 진행률 표시
+        children: [
+          SizedBox(
+            width: 60,
+            height: 60,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: overallPercent / 100,
+                  strokeWidth: 4,
+                  backgroundColor: TablerColors.border,
+                  valueColor: AlwaysStoppedAnimation(TablerColors.primary),
+                ),
+                Text(
+                  '${overallPercent.round()}%',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: TablerColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '전체 진행률',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: TablerColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  '${overallPercent.round()}% 완료',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: TablerColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 통계 항목들
+          Wrap(
+            spacing: 16,
+            runSpacing: 12,
+            children: [
+              SizedBox(
+                width: (MediaQuery.of(context).size.width - 80) / 4,
+                child: buildStatItem(
+                  '학습한 단어',
+                  '$learnedWords개',
+                  TablerColors.success,
+                  Icons.school,
+                ),
+              ),
+              SizedBox(
+                width: (MediaQuery.of(context).size.width - 80) / 4,
+                child: buildStatItem(
+                  '연속 학습',
+                  '$streakDays일',
+                  TablerColors.warning,
+                  Icons.local_fire_department,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildStatItem(String label, String value, Color color, IconData icon) {
+    return Container(
+      padding: EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(6),

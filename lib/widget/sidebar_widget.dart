@@ -1,4 +1,3 @@
-// lib/widget/sidebar_widget.dart (Tabler 스타일 적용)
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:go_router/go_router.dart';
@@ -170,51 +169,6 @@ class SidebarState extends State<Sidebar> {
                   ),
                 );
               },
-            ),
-          ),
-
-          // 하단 영역 (사용자 정보 등)
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: TablerColors.border)),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: TablerColors.primary.withOpacity(0.1),
-                  child: Icon(
-                    Icons.person,
-                    size: 18,
-                    color: TablerColors.primary,
-                  ),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '사용자',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: TablerColors.textPrimary,
-                        ),
-                      ),
-                      Text(
-                        '온라인',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: TablerColors.success,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ),
           ),
         ],
