@@ -205,8 +205,9 @@ class HomeScreenState extends State<HomeScreen> {
   Widget buildTabletLayoutImproved(CourseModel courseModel) {
     return Column(
       children: [
-        SizedBox(height: 280, child: buildCourseCardWithStats(courseModel)),
-        SizedBox(height: 16),
+        // 학습 코스 카드 (고정 높이)
+        SizedBox(height: 290, child: buildCourseCardWithStats(courseModel)),
+        // 복습 카드 (남은 공간 사용)
         SizedBox(width: double.infinity, child: buildReviewCard(courseModel)),
         SizedBox(width: double.infinity, child: buildStatsCard2()),
       ],
@@ -229,31 +230,28 @@ class HomeScreenState extends State<HomeScreen> {
       child: hasCourse
           ? Column(
               children: [
-                Expanded(
-                  flex: 3,
-                  child: Container(
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: TablerColors.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      children: [
-                        DaybarWidget(
-                          totalDays: courseModel.totalDays,
-                          currentDay: courseModel.currentDay,
-                          steps: courseModel.steps,
+                Container(
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: TablerColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: [
+                      DaybarWidget(
+                        totalDays: courseModel.totalDays,
+                        currentDay: courseModel.currentDay,
+                        steps: courseModel.steps,
+                      ),
+                      SizedBox(height: 16),
+                      LinearProgressIndicator(
+                        value: courseModel.currentDay / courseModel.totalDays,
+                        backgroundColor: TablerColors.border,
+                        valueColor: AlwaysStoppedAnimation(
+                          TablerColors.primary,
                         ),
-                        SizedBox(height: 4),
-                        LinearProgressIndicator(
-                          value: courseModel.currentDay / courseModel.totalDays,
-                          backgroundColor: TablerColors.border,
-                          valueColor: AlwaysStoppedAnimation(
-                            TablerColors.primary,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
 
@@ -370,174 +368,127 @@ class HomeScreenState extends State<HomeScreen> {
 
     return TablerCard(
       title: hasCourse ? '현재 학습 코스' : '학습 시작하기',
-      padding: EdgeInsets.all(12), // 패딩 줄임
       child: hasCourse
           ? Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                // 상단: 진행 단계
+                // 상단: 진행 단계 (고정 높이)
                 Container(
-                  height: 100, // 고정 높이
-                  padding: EdgeInsets.all(8),
+                  height: 120,
+                  padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: TablerColors.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(
                     children: [
-                      // DayBar - 높이 제한
-                      SizedBox(
-                        height: 40,
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: DaybarWidget(
-                            totalDays: courseModel.totalDays,
-                            currentDay: courseModel.currentDay,
-                            steps: courseModel.steps,
-                          ),
-                        ),
+                      // DayBar를 상단에 배치
+                      DaybarWidget(
+                        totalDays: courseModel.totalDays,
+                        currentDay: courseModel.currentDay,
+                        steps: courseModel.steps,
                       ),
-                      SizedBox(height: 8),
-                      // 진행률과 통계
-                      SizedBox(
-                        height: 44, // 고정 높이
-                        child: Row(
-                          children: [
-                            // 왼쪽: 진행률
-                            Expanded(
-                              flex: 2,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '전체 진행률',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: TablerColors.textSecondary,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  LinearProgressIndicator(
-                                    value:
-                                        courseModel.currentDay /
-                                        courseModel.totalDays,
-                                    backgroundColor: TablerColors.border,
-                                    valueColor: AlwaysStoppedAnimation(
-                                      TablerColors.primary,
-                                    ),
-                                    minHeight: 4,
-                                  ),
-                                  SizedBox(height: 2),
-                                  Text(
-                                    '${((courseModel.currentDay / courseModel.totalDays) * 100).round()}% 완료',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: TablerColors.textPrimary,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            SizedBox(width: 12),
-                            // 오른쪽: 통계
-                            Row(
+                      SizedBox(height: 12),
+                      // 진행률과 통계를 가로로 배치
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // 왼쪽: 진행률 바
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                buildCompactStatItem(
-                                  '단어',
-                                  '$learnedWordsCount개',
-                                  TablerColors.success,
-                                  Icons.school,
+                                LinearProgressIndicator(
+                                  value:
+                                      courseModel.currentDay /
+                                      courseModel.totalDays,
+                                  backgroundColor: TablerColors.border,
+                                  valueColor: AlwaysStoppedAnimation(
+                                    TablerColors.primary,
+                                  ),
+                                  minHeight: 6,
                                 ),
-                                SizedBox(width: 6),
-                                buildCompactStatItem(
-                                  '연속',
-                                  '$streakDays일',
-                                  TablerColors.warning,
-                                  Icons.local_fire_department,
+                                SizedBox(height: 2),
+                                Text(
+                                  '${((courseModel.currentDay / courseModel.totalDays) * 100).round()}% 완료',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: TablerColors.textPrimary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
 
-                SizedBox(height: 8),
+                SizedBox(height: 12),
 
                 // 하단: 버튼들
-                SizedBox(
-                  height: 36, // 버튼 높이 고정
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TablerButton(
-                          text: '학습하기',
-                          icon: Icons.play_arrow,
-                          small: true,
-                          onPressed:
-                              courseModel.currentDay <= courseModel.totalDays
-                              ? () {
-                                  final safeDay = courseModel.currentDay < 1
-                                      ? 1
-                                      : courseModel.currentDay;
-                                  GoRouter.of(context).go(
-                                    '/study',
-                                    extra: {
-                                      'course': courseModel.selectedCourse!,
-                                      'day': safeDay,
-                                    },
-                                  );
-                                }
-                              : null,
-                        ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TablerButton(
+                        text: '학습하기',
+                        icon: Icons.play_arrow,
+                        onPressed:
+                            courseModel.currentDay <= courseModel.totalDays
+                            ? () {
+                                final safeDay = courseModel.currentDay < 1
+                                    ? 1
+                                    : courseModel.currentDay;
+                                GoRouter.of(context).go(
+                                  '/study',
+                                  extra: {
+                                    'course': courseModel.selectedCourse!,
+                                    'day': safeDay,
+                                  },
+                                );
+                              }
+                            : null,
                       ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: TablerButton(
-                          text: '코스 변경',
-                          outline: true,
-                          small: true,
-                          onPressed: () => GoRouter.of(context).go('/course'),
-                        ),
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: TablerButton(
+                        text: '코스 변경',
+                        outline: true,
+                        onPressed: () => GoRouter.of(context).go('/course'),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ],
             )
-          : SizedBox(
-              height: 160, // 고정 높이
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.school_outlined,
-                    size: 40,
+          : Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.school_outlined,
+                  size: 48,
+                  color: TablerColors.textSecondary,
+                ),
+                SizedBox(height: 12),
+                Text(
+                  '학습 코스를 선택하여\n수어 학습을 시작해보세요',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
                     color: TablerColors.textSecondary,
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    '학습 코스를 선택하여\n수어 학습을 시작해보세요',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: TablerColors.textSecondary,
-                    ),
-                  ),
-                  SizedBox(height: 12),
-                  TablerButton(
-                    text: '학습 코스 선택',
-                    icon: Icons.arrow_forward,
-                    small: true,
-                    onPressed: () => GoRouter.of(context).go('/course'),
-                  ),
-                ],
-              ),
+                ),
+                SizedBox(height: 16),
+                TablerButton(
+                  text: '학습 코스 선택',
+                  icon: Icons.arrow_forward,
+                  onPressed: () => GoRouter.of(context).go('/course'),
+                ),
+              ],
             ),
     );
   }
@@ -548,41 +499,36 @@ class HomeScreenState extends State<HomeScreen> {
     Color color,
     IconData icon,
   ) {
-    return SizedBox(
-      width: 50,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: color.withOpacity(0.2)),
-            ),
-            child: Icon(icon, color: color, size: 10),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withOpacity(0.2)),
           ),
-          SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 8,
-              fontWeight: FontWeight.w600,
-              color: TablerColors.textPrimary,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          child: Icon(icon, color: color, size: 14),
+        ),
+        SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: TablerColors.textPrimary,
           ),
-          Text(
-            label,
-            style: TextStyle(fontSize: 6, color: TablerColors.textSecondary),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
+        ),
+        Text(
+          label,
+          style: TextStyle(fontSize: 8, color: TablerColors.textSecondary),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
   }
 
@@ -599,12 +545,23 @@ class HomeScreenState extends State<HomeScreen> {
 
     return TablerCard(
       title: '복습하기',
-      child: Container(
-        constraints: BoxConstraints(minHeight: 150),
+      actions: courseWordsMap.length > 3
+          ? [
+              TablerButton(
+                text: '전체보기',
+                small: true,
+                outline: true,
+                onPressed: () => GoRouter.of(context).push(
+                  '/review_all',
+                  extra: {'courseWordsMap': courseWordsMap},
+                ),
+              ),
+            ]
+          : null,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: 100),
         child: courseWordsMap.isEmpty
-            ? Container(
-                height: 150,
-                alignment: Alignment.center,
+            ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -622,6 +579,7 @@ class HomeScreenState extends State<HomeScreen> {
                 ),
               )
             : Column(
+                mainAxisSize: MainAxisSize.min,
                 children: courseWordsMap.entries.take(3).map((entry) {
                   return Padding(
                     padding: EdgeInsets.only(bottom: 12),
@@ -631,26 +589,63 @@ class HomeScreenState extends State<HomeScreen> {
                         border: Border.all(color: TablerColors.border),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '${entry.key} 복습',
-                              style: TextStyle(fontWeight: FontWeight.w500),
-                            ),
-                          ),
-                          TablerButton(
-                            text: '시작',
-                            small: true,
-                            onPressed: () => GoRouter.of(context).push(
-                              '/review',
-                              extra: {
-                                'words': entry.value,
-                                'title': '${entry.key} 복습 퀴즈',
-                              },
-                            ),
-                          ),
-                        ],
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isNarrow = constraints.maxWidth < 200;
+
+                          if (isNarrow) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  '${entry.key} 복습',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                    color: TablerColors.textPrimary,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                SizedBox(height: 8),
+                                TablerButton(
+                                  text: '시작',
+                                  small: true,
+                                  onPressed: () => GoRouter.of(context).push(
+                                    '/review',
+                                    extra: {
+                                      'words': entry.value,
+                                      'title': '${entry.key} 복습 퀴즈',
+                                    },
+                                  ),
+                                ),
+                              ],
+                            );
+                          } else {
+                            return Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '${entry.key} 복습',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      color: TablerColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                                TablerButton(
+                                  text: '시작',
+                                  small: true,
+                                  onPressed: () => GoRouter.of(context).push(
+                                    '/review',
+                                    extra: {
+                                      'words': entry.value,
+                                      'title': '${entry.key} 복습 퀴즈',
+                                    },
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+                        },
                       ),
                     ),
                   );
