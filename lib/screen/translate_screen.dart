@@ -7,6 +7,8 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:sign_web/widget/animation_widget.dart';
 import 'package:sign_web/service/translate_api.dart';
 import 'package:sign_web/widget/sidebar_widget.dart';
+import 'package:sign_web/theme/tabler_theme.dart';
+import 'package:sign_web/widget/tablerui_widget.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/foundation.dart';
 
@@ -19,6 +21,7 @@ class TranslateScreen extends StatefulWidget {
 class TranslateScreenWebState extends State<TranslateScreen> {
   bool isSignToKorean = true; // true: 수어 -> 한글 | false 한글 -> 수어
   bool isCameraOn = false;
+  bool isTranslating = false;
   XFile? capturedVideo;
 
   final TextEditingController inputController = TextEditingController();
@@ -40,6 +43,10 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       GlobalKey<AnimationWidgetState>();
   List<Uint8List> decodeFrames = [];
 
+  // 프레임 상태 표시용 변수 추가
+  String frameStatus = '';
+  bool isCollectingFrames = false;
+
   @override
   void initState() {
     super.initState();
@@ -48,10 +55,16 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   @override
   void dispose() {
     stopCamera();
+    inputController.dispose();
     super.dispose();
   }
 
   Future<void> sendFrames(List<Uint8List> frames) async {
+    setState(() {
+      frameStatus = "프레임 ${frames.length}개 서버로 전송 중...";
+      isCollectingFrames = false;
+    });
+
     print("프레임 ${frames.length}개 서버로 전송 시도...");
     final List<String> base64Frames = frames
         .map((frame) => base64Encode(frame))
@@ -61,28 +74,43 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       final result = await TranslateApi.sendFrames(base64Frames);
       if (result != null) {
         print("서버 응답 성공: $result");
+        setState(() {
+          frameStatus = "분석 중... 잠시만 기다려주세요";
+        });
       } else {
         print("서버 응답 실패: result is null");
+        setState(() {
+          frameStatus = "전송 실패";
+        });
       }
     } catch (e) {
       print("프레임 전송 중 오류 발생: $e");
+      setState(() {
+        frameStatus = "전송 오류 발생";
+      });
     }
   }
 
   Future<void> startCamera() async {
     try {
       final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        throw Exception('카메라를 찾을 수 없습니다');
+      }
+
       final front = cameras.firstWhere(
         (cam) => cam.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
       );
 
       cameraController = CameraController(
         front,
-        ResolutionPreset.medium,
+        ResolutionPreset.low,
         enableAudio: false,
       );
 
       await cameraController!.initialize();
+
       if (kIsWeb) {
         Timer.periodic(Duration(milliseconds: 500), (timer) async {
           if (!isCameraOn || cameraController == null) {
@@ -95,6 +123,12 @@ class TranslateScreenWebState extends State<TranslateScreen> {
             final bytes = await picture.readAsBytes();
             frameBuffer.add(bytes);
 
+            // 프레임 수집 상태 업데이트
+            setState(() {
+              isCollectingFrames = true;
+              frameStatus = "프레임 수집 중... (${frameBuffer.length}/30)\n지금 움직이세요!";
+            });
+
             if (frameBuffer.length >= 30) {
               await sendFrames(List.from(frameBuffer));
               frameBuffer.clear();
@@ -106,16 +140,39 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       } else {
         await cameraController!.startImageStream(onFrameAvailable);
       }
+
       setState(() {
         isCameraOn = true;
+        frameStatus = "카메라 준비 완료!\n수어 동작을 시작하세요";
       });
+
+      Fluttertoast.showToast(
+        msg: '카메라가 켜졌습니다',
+        backgroundColor: TablerColors.success,
+        textColor: Colors.white,
+      );
     } catch (e) {
       print("카메라 초기화 실패: $e");
+      setState(() {
+        frameStatus = "카메라 오류";
+      });
+      Fluttertoast.showToast(
+        msg: '카메라를 켤 수 없습니다',
+        backgroundColor: TablerColors.danger,
+        textColor: Colors.white,
+      );
     }
   }
 
   Future<void> stopCamera() async {
     if (cameraController == null) return;
+
+    setState(() {
+      frameStatus = "카메라 중지 중...";
+      isCollectingFrames = false;
+    });
+
+    print("카메라 중지 요청 수신");
 
     try {
       // 스트림 중지 (예외 없이 진행되도록)
@@ -128,21 +185,18 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       print("이미지 스트림 중지 오류: $e");
     }
 
-    try {
-      // 영상 녹화 중이라면 정지
-      if (cameraController!.value.isRecordingVideo) {
-        print("영상 녹화 중지 시도...");
-        final file = await cameraController!.stopVideoRecording();
-        capturedVideo = file;
-        print("영상 녹화 완료: ${file.path}");
+    if (frameBuffer.isNotEmpty) {
+      try {
+        print("잔여 프레임 ${frameBuffer.length}개 서버에 전송 중...");
+        await sendFrames(List.from(frameBuffer));
+        frameBuffer.clear();
+      } catch (e) {
+        print("잔여 프레임 전송 실패: $e");
       }
-    } catch (e) {
-      print("녹화 중지 오류: $e");
     }
 
     try {
       // 컨트롤러 dispose
-      print("컨트롤러 dispose 시작...");
       await cameraController!.dispose();
       print("컨트롤러 dispose 완료");
     } catch (e) {
@@ -154,6 +208,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     if (mounted) {
       setState(() {
         isCameraOn = false;
+        frameStatus = "";
       });
     }
   }
@@ -166,6 +221,12 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       final jpeg = await convertYUV420toJPEG(image);
       if (jpeg != null) {
         frameBuffer.add(jpeg);
+
+        // 프레임 수집 상태 업데이트
+        setState(() {
+          isCollectingFrames = true;
+          frameStatus = "프레임 수집 중... (${frameBuffer.length}/30)\n지금 움직이세요!";
+        });
 
         if (frameBuffer.length > 30) {
           await sendFrames(List.from(frameBuffer));
@@ -184,419 +245,810 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   void toggleDirection() {
     setState(() {
       isSignToKorean = !isSignToKorean;
-      isCameraOn = false;
+      _clearResults();
     });
-  }
 
-  void toggleCamera() {
     if (isCameraOn) {
       stopCamera();
-    } else {
-      startCamera();
     }
+  }
+
+  void _clearResults() {
+    resultKorean = null;
+    resultEnglish = null;
+    resultJapanese = null;
+    resultChinese = null;
+    decodeFrames = [];
+    inputController.clear();
+    frameStatus = '';
+    isCollectingFrames = false;
   }
 
   Future<Uint8List?> convertYUV420toJPEG(CameraImage image) async {
     try {
-      final width = image.width;
-      final height = image.height;
-
-      final img.Image imgData = img.Image(width: width, height: height);
+      final int width = image.width;
+      final int height = image.height;
 
       final planeY = image.planes[0];
       final planeU = image.planes[1];
       final planeV = image.planes[2];
 
-      final bytesY = planeY.bytes;
-      final bytesU = planeU.bytes;
-      final bytesV = planeV.bytes;
+      final Uint8List bytesY = planeY.bytes;
+      final Uint8List bytesU = planeU.bytes;
+      final Uint8List bytesV = planeV.bytes;
 
-      final int rowStrideY = planeY.bytesPerRow;
-      final int rowStrideU = planeU.bytesPerRow;
+      final int yStride = planeY.bytesPerRow;
+      final int uStride = planeU.bytesPerRow;
       final int pixelStrideU = planeU.bytesPerPixel ?? 1;
 
+      String format = 'UNKNOWN';
+
+      final int yHeight = height;
+      final int yWidth = width;
+
+      final int uWidthGuess = uStride ~/ (planeU.bytesPerPixel ?? 1);
+      final int uHeightGuess = planeU.bytes.length ~/ uStride;
+
+      if ((uWidthGuess - yWidth).abs() <= 32 &&
+          (uHeightGuess - yHeight).abs() <= 2) {
+        format = 'YUV444';
+      } else if ((uWidthGuess - yWidth ~/ 2).abs() <= 32 &&
+          (uHeightGuess - yHeight).abs() <= 2) {
+        format = 'YUV422';
+      } else if ((uWidthGuess - yWidth ~/ 2).abs() <= 32 &&
+          (uHeightGuess - yHeight ~/ 2).abs() <= 2) {
+        format = 'YUV420';
+      } else {
+        print("Unknown YUV format");
+        print(
+          "→ uStride: $uStride, uHeightGuess: $uHeightGuess, pixelStrideU: $pixelStrideU",
+        );
+        return null;
+      }
+
+      final img.Image output = img.Image(width: width, height: height);
+
       for (int y = 0; y < height; y++) {
+        final int yRow = y * yStride;
+        final int uvY = (format == 'YUV420')
+            ? y ~/ 2
+            : (format == 'YUV422')
+            ? y
+            : y;
+
         for (int x = 0; x < width; x++) {
-          final int uvIndex = (y ~/ 2) * rowStrideU + (x ~/ 2) * pixelStrideU;
-          final int yIndex = y * rowStrideY + x;
+          final int yIndex = yRow + x;
 
-          final yp = bytesY[yIndex];
-          final up = bytesU[uvIndex];
-          final vp = bytesV[uvIndex];
+          final int uvX = (format == 'YUV444') ? x : x ~/ 2;
+          final int uvIndex = uvY * uStride + uvX * pixelStrideU;
 
-          int r = (yp + 1.402 * (vp - 128)).round();
-          int g = (yp - 0.344136 * (up - 128) - 0.714136 * (vp - 128)).round();
-          int b = (yp + 1.772 * (up - 128)).round();
+          final int Y = bytesY[yIndex];
+          final int U = bytesU[uvIndex] - 128;
+          final int V = bytesV[uvIndex] - 128;
 
-          imgData.setPixelRgb(
+          // TTA 기반 변환 공식
+          int R = (Y + 0.956 * U + 0.621 * V).round();
+          int G = (Y - 0.272 * U - 0.647 * V).round();
+          int B = (Y + 1.106 * U + 1.703 * V).round();
+
+          output.setPixelRgb(
             x,
             y,
-            r.clamp(0, 255),
-            g.clamp(0, 255),
-            b.clamp(0, 255),
+            R.clamp(0, 255),
+            G.clamp(0, 255),
+            B.clamp(0, 255),
           );
         }
       }
 
-      final encodedBytes = img.encodeJpg(imgData, quality: 80);
-      return Uint8List.fromList(encodedBytes);
+      final encoded = img.encodeJpg(output, quality: 80);
+      return Uint8List.fromList(encoded);
     } catch (e) {
-      print("convertYUV420toJPEG 오류: $e");
+      debugPrint("변환 오류: $e");
       return null;
     }
   }
 
+  Future<void> handleTranslate() async {
+    setState(() => isTranslating = true);
+
+    try {
+      if (isSignToKorean) {
+        // 수어 -> 텍스트 번역
+        setState(() {
+          frameStatus = "번역 결과 처리 중...";
+        });
+
+        final result = await TranslateApi.translateLatest();
+        if (result != null) {
+          setState(() {
+            resultKorean = result['korean'] is List
+                ? (result['korean'] as List).join(' ')
+                : result['korean']?.toString();
+            resultEnglish = result['english'];
+            resultJapanese = result['japanese'];
+            resultChinese = result['chinese'];
+            frameStatus = ""; // 상태 초기화
+          });
+
+          Fluttertoast.showToast(
+            msg: '번역이 완료되었습니다',
+            backgroundColor: TablerColors.success,
+            textColor: Colors.white,
+          );
+        } else {
+          setState(() {
+            frameStatus = "번역 실패";
+          });
+          showTranslationError('번역 결과를 가져올 수 없습니다');
+        }
+      } else {
+        // 텍스트 -> 수어 번역
+        final word = inputController.text.trim();
+        if (word.isEmpty) {
+          Fluttertoast.showToast(
+            msg: '번역할 단어를 입력하세요',
+            backgroundColor: TablerColors.warning,
+            textColor: Colors.white,
+          );
+          return;
+        }
+
+        final frameList = await TranslateApi.translate_word_to_video(word);
+        if (frameList != null && frameList.isNotEmpty) {
+          setState(() {
+            decodeFrames = frameList.map((b64) => base64Decode(b64)).toList();
+            resultKorean = word;
+          });
+
+          Fluttertoast.showToast(
+            msg: '수어 번역이 완료되었습니다',
+            backgroundColor: TablerColors.success,
+            textColor: Colors.white,
+          );
+        } else {
+          showTranslationError('수어 애니메이션이 없습니다');
+        }
+      }
+    } catch (e) {
+      setState(() {
+        frameStatus = "오류 발생";
+      });
+      showTranslationError('번역 중 오류가 발생했습니다');
+    } finally {
+      setState(() => isTranslating = false);
+    }
+  }
+
+  Future<void> translateSignToText() async {
+    try {
+      final result = await TranslateApi.translateLatest();
+      if (result != null) {
+        setState(() {
+          resultKorean = result['korean'] ?? '';
+          resultEnglish = result['english'] ?? '';
+          resultJapanese = result['japanese'] ?? '';
+          resultChinese = result['chinese'] ?? '';
+        });
+
+        Fluttertoast.showToast(
+          msg: '번역이 완료되었습니다',
+          backgroundColor: TablerColors.success,
+          textColor: Colors.white,
+        );
+      } else {
+        showTranslationError('번역 결과를 가져올 수 없습니다');
+      }
+    } catch (e) {
+      showTranslationError('번역 중 오류가 발생했습니다');
+    }
+  }
+
+  Future<void> translateTextToSign() async {
+    final word = inputController.text.trim();
+    if (word.isEmpty) {
+      Fluttertoast.showToast(
+        msg: '번역할 단어를 입력하세요',
+        backgroundColor: TablerColors.warning,
+        textColor: Colors.white,
+      );
+      return;
+    }
+
+    try {
+      final frameList = await TranslateApi.translate_word_to_video(word);
+      if (frameList != null && frameList.isNotEmpty) {
+        setState(() {
+          decodeFrames = frameList.map((b64) => base64Decode(b64)).toList();
+          resultKorean = word;
+        });
+
+        Fluttertoast.showToast(
+          msg: '수어 번역이 완료되었습니다',
+          backgroundColor: TablerColors.success,
+          textColor: Colors.white,
+        );
+      } else {
+        showTranslationError('해당 단어의 수어 영상을 찾을 수 없습니다');
+      }
+    } catch (e) {
+      showTranslationError('수어 번역 중 오류가 발생했습니다');
+    }
+  }
+
+  void showTranslationError(String message) {
+    Fluttertoast.showToast(
+      msg: message,
+      backgroundColor: TablerColors.danger,
+      textColor: Colors.white,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final inputLabel = isSignToKorean ? '수어 입력' : '$selectedLang 입력';
-
-    final screenWidth = MediaQuery.of(context).size.width;
-    double contentWidth = screenWidth * 0.8;
-    if (contentWidth > 1100) contentWidth = 1100;
-    if (contentWidth < 340) contentWidth = 340;
-
-    // 카메라 상태에 따른 flex 비율 설정
-    final inputFlex = (isSignToKorean && isCameraOn) ? 3 : 1;
-    final resultFlex = (isSignToKorean && isCameraOn) ? 1 : 2;
-
     return Scaffold(
+      backgroundColor: TablerColors.background,
       body: SafeArea(
         child: Row(
           children: [
             Sidebar(initialIndex: 3),
-            VerticalDivider(width: 1),
+            VerticalDivider(width: 1, color: TablerColors.border),
             Expanded(
-              child: Center(
-                child: SizedBox(
-                  width: contentWidth,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 언어선택/스왑 Row
-                      Padding(
-                        padding: EdgeInsets.only(top: 24, bottom: 10),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: isSignToKorean
-                                    ? Text('수어', style: TextStyle(fontSize: 26))
-                                    : DropdownButton<String>(
-                                        value: selectedLang,
-                                        icon: Icon(
-                                          Icons.arrow_drop_down,
-                                          size: 22,
-                                        ),
-                                        underline: SizedBox(),
-                                        items: langs
-                                            .map(
-                                              (lang) => DropdownMenuItem(
-                                                value: lang,
-                                                child: Text(
-                                                  lang,
-                                                  style: const TextStyle(
-                                                    fontSize: 20,
-                                                  ),
-                                                ),
-                                              ),
-                                            )
-                                            .toList(),
-                                        onChanged: (lang) => setState(
-                                          () => selectedLang = lang!,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                            IconButton(
-                              icon: Icon(Icons.sync_alt, size: 26),
-                              onPressed: toggleDirection,
-                            ),
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: isSignToKorean
-                                    ? DropdownButton<String>(
-                                        value: selectedLang,
-                                        icon: Icon(
-                                          Icons.arrow_drop_down,
-                                          size: 22,
-                                        ),
-                                        underline: SizedBox(),
-                                        items: langs
-                                            .map(
-                                              (lang) => DropdownMenuItem(
-                                                value: lang,
-                                                child: Text(
-                                                  lang,
-                                                  style: TextStyle(
-                                                    fontSize: 20,
-                                                  ),
-                                                ),
-                                              ),
-                                            )
-                                            .toList(),
-                                        onChanged: (lang) => setState(
-                                          () => selectedLang = lang!,
-                                        ),
-                                      )
-                                    : Text(
-                                        '수어',
-                                        style: TextStyle(fontSize: 26),
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: 16),
-                      // 입력/결과 영역을 Row로 배치 (좌: 입력, 우: 결과)
-                      Expanded(
-                        flex: 1,
-                        child: Column(
-                          children: [
-                            // 입력 영역 - flex 비율 동적 적용
-                            Expanded(
-                              flex: inputFlex,
-                              child: AnimatedContainer(
-                                duration: Duration(milliseconds: 300),
-                                curve: Curves.easeInOut,
-                                padding: EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.black),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    // 텍스트 입력 영역
-                                    if (!isSignToKorean || !isCameraOn)
-                                      Expanded(
-                                        child: Container(
-                                          padding: EdgeInsets.only(right: 40),
-                                          alignment: Alignment.topLeft,
-                                          child: TextField(
-                                            controller: inputController,
-                                            decoration: InputDecoration(
-                                              border: InputBorder.none,
-                                              hintText: inputLabel,
-                                            ),
-                                            style: TextStyle(fontSize: 15),
-                                            maxLines: null,
-                                            expands: true,
-                                          ),
-                                        ),
-                                      ),
-                                    // 카메라 프리뷰
-                                    if (isSignToKorean &&
-                                        isCameraOn &&
-                                        cameraController != null &&
-                                        cameraController!.value.isInitialized)
-                                      Expanded(
-                                        child: Container(
-                                          constraints: BoxConstraints(
-                                            maxWidth: contentWidth * 0.8,
-                                          ),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                            child: CameraPreview(
-                                              cameraController!,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    // 카메라 버튼
-                                    if (isSignToKorean)
-                                      Padding(
-                                        padding: EdgeInsets.only(top: 12),
-                                        child: IconButton(
-                                          icon: Icon(
-                                            isCameraOn
-                                                ? Icons.camera_alt
-                                                : Icons.no_photography,
-                                            size: 32,
-                                            color: isCameraOn
-                                                ? Colors.red
-                                                : Colors.grey,
-                                          ),
-                                          onPressed: toggleCamera,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            SizedBox(height: 10),
-                            // 결과 영역 - flex 비율 동적 적용
-                            Expanded(
-                              flex: resultFlex,
-                              child: AnimatedContainer(
-                                duration: Duration(milliseconds: 300),
-                                curve: Curves.easeInOut,
-                                padding: EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.black),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.max,
-                                  children: [
-                                    Expanded(
-                                      child: SingleChildScrollView(
-                                        child: Container(
-                                          alignment: Alignment.topLeft,
-                                          child: resultKorean == null
-                                              ? Text(
-                                                  '번역 결과',
-                                                  style: TextStyle(
-                                                    fontSize: 15,
-                                                  ),
-                                                )
-                                              : Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    if (isSignToKorean &&
-                                                        resultKorean !=
-                                                            null) ...[
-                                                      Text(
-                                                        '한글: $resultKorean',
-                                                        style: TextStyle(
-                                                          fontSize: 16,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        '영어: $resultEnglish',
-                                                        style: TextStyle(
-                                                          fontSize: 16,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        '일본어: $resultJapanese',
-                                                        style: TextStyle(
-                                                          fontSize: 16,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        '중국어: $resultChinese',
-                                                        style: TextStyle(
-                                                          fontSize: 16,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(
-                                                        height: 12,
-                                                      ),
-                                                    ],
-                                                    if (!isSignToKorean &&
-                                                        decodeFrames.isNotEmpty)
-                                                      Column(
-                                                        children: [
-                                                          AspectRatio(
-                                                            aspectRatio: 16 / 9,
-                                                            child: AnimationWidget(
-                                                              key: animationKey,
-                                                              frames:
-                                                                  decodeFrames,
-                                                            ),
-                                                          ),
-                                                          SizedBox(height: 8),
-                                                          ElevatedButton.icon(
-                                                            onPressed: () =>
-                                                                animationKey
-                                                                    .currentState
-                                                                    ?.reset(),
-                                                            icon: Icon(
-                                                              Icons.replay,
-                                                            ),
-                                                            label: Text('다시보기'),
-                                                          ),
-                                                        ],
-                                                      )
-                                                    else if (!isSignToKorean)
-                                                      const SizedBox(
-                                                        height: 180,
-                                                        child: Center(
-                                                          child: Text(
-                                                            "수어 영상 없음",
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    if (resultKorean == null)
-                                                      Text(
-                                                        '번역결과',
-                                                        style: TextStyle(
-                                                          fontSize: 16,
-                                                        ),
-                                                      ),
-                                                  ],
-                                                ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: 28),
-                      SizedBox(
-                        width: 260,
-                        height: 42,
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            if (isSignToKorean) {
-                              final result =
-                                  await TranslateApi.translateLatest();
-                              if (result != null) {
-                                setState(() {
-                                  resultKorean = result['korean'];
-                                  resultEnglish = result['english'];
-                                  resultJapanese = result['japanese'];
-                                  resultChinese = result['chinese'];
-                                });
-                              } else {
-                                Fluttertoast.showToast(
-                                  msg: '번역 결과를 가져올 수 없습니다.',
-                                );
-                              }
-                            } else {
-                              // 한국어 → 수어
-                              final word = inputController.text.trim();
-                              if (word.isEmpty) {
-                                Fluttertoast.showToast(msg: '번역할 단어를 입력하세요.');
-                                return;
-                              }
-                              final frameList =
-                                  await TranslateApi.translate_word_to_video(
-                                    word,
-                                  );
-                              if (frameList != null && frameList.isNotEmpty) {
-                                setState(() {
-                                  decodeFrames = frameList
-                                      .map((b64) => base64Decode(b64))
-                                      .toList();
-                                  resultKorean = word;
-                                });
-                              } else {
-                                Fluttertoast.showToast(msg: '수어 애니메이션이 없습니다.');
-                              }
-                            }
-                          },
-                          child: Text('번역하기', style: TextStyle(fontSize: 16)),
-                        ),
-                      ),
-                      SizedBox(height: 20),
-                    ],
-                  ),
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    buildLanguageSelector(),
+                    SizedBox(height: 24),
+                    Expanded(child: buildTranslationArea()),
+                    SizedBox(height: 24),
+                    buildTranslateButton(),
+                  ],
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildLanguageSelector() {
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: TablerColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: buildLanguageBox(
+              isSignToKorean ? '수어' : selectedLang,
+              false,
+            ),
+          ),
+          SizedBox(width: 16),
+          Container(
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: TablerColors.primary,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: IconButton(
+              icon: Icon(Icons.swap_horiz, color: Colors.white, size: 20),
+              onPressed: toggleDirection,
+              tooltip: '번역 방향 전환',
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints(),
+            ),
+          ),
+          SizedBox(width: 16),
+          Expanded(
+            child: buildLanguageBox(isSignToKorean ? selectedLang : '수어', true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildLanguageBox(String language, bool isTarget) {
+    if (language == '수어') {
+      return Container(
+        padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          color: TablerColors.primary.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: TablerColors.primary.withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.sign_language, color: TablerColors.primary, size: 20),
+            SizedBox(width: 8),
+            Text(
+              '수어',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: TablerColors.primary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 언어 선택 드롭다운
+    bool canChange =
+        (isSignToKorean && isTarget) || (!isSignToKorean && !isTarget);
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: TablerColors.border),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: selectedLang,
+          isExpanded: true,
+          icon: Icon(Icons.arrow_drop_down, color: TablerColors.textSecondary),
+          items: langs
+              .map(
+                (lang) => DropdownMenuItem(
+                  value: lang,
+                  child: Text(
+                    lang,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: TablerColors.textPrimary,
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: canChange
+              ? (lang) => setState(() => selectedLang = lang!)
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Widget buildTranslationArea() {
+    return Row(
+      children: [
+        Expanded(child: buildInputCard()),
+        SizedBox(width: 24),
+        Expanded(child: buildResultCard()),
+      ],
+    );
+  }
+
+  Widget buildInputCard() {
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: TablerColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isSignToKorean ? Icons.videocam : Icons.text_fields,
+                color: TablerColors.textSecondary,
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Text(
+                isSignToKorean ? '수어 입력' : '텍스트 입력',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: TablerColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          Expanded(child: isSignToKorean ? buildCameraArea() : buildTextArea()),
+        ],
+      ),
+    );
+  }
+
+  Widget buildCameraArea() {
+    return Column(
+      children: [
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: isCameraOn && cameraController?.value.isInitialized == true
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: CameraPreview(cameraController!),
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.videocam_off,
+                          size: 48,
+                          color: Colors.white54,
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          '카메라를 켜서\n수어를 입력하세요',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 16, color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        ),
+        SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: TablerButton(
+            text: isCameraOn ? '카메라 끄기' : '카메라 켜기',
+            icon: isCameraOn ? Icons.videocam_off : Icons.videocam,
+            outline: !isCameraOn,
+            onPressed: isCameraOn ? stopCamera : startCamera,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildTextArea() {
+    return TextField(
+      controller: inputController,
+      maxLines: null,
+      expands: true,
+      textAlignVertical: TextAlignVertical.top,
+      decoration: InputDecoration(
+        hintText: '번역할 텍스트를 입력하세요...',
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: TablerColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: TablerColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: TablerColors.primary, width: 2),
+        ),
+        contentPadding: EdgeInsets.all(16),
+      ),
+      style: TextStyle(fontSize: 16),
+    );
+  }
+
+  Widget buildResultCard() {
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: TablerColors.background.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: TablerColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isSignToKorean ? Icons.text_fields : Icons.videocam,
+                color: TablerColors.textSecondary,
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Text(
+                '번역 결과',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: TablerColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          Expanded(
+            child: isSignToKorean ? buildTextResults() : buildVideoResult(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildTextResults() {
+    // 프레임 수집/전송 상태가 있으면 표시
+    if (frameStatus.isNotEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // 상태에 따른 아이콘
+            if (isCollectingFrames)
+              Container(
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: TablerColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(50),
+                ),
+                child: Icon(
+                  Icons.videocam,
+                  size: 48,
+                  color: TablerColors.primary,
+                ),
+              )
+            else if (frameStatus.contains("전송"))
+              Container(
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: TablerColors.warning.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(50),
+                ),
+                child: Icon(
+                  Icons.cloud_upload,
+                  size: 48,
+                  color: TablerColors.warning,
+                ),
+              )
+            else if (frameStatus.contains("분석"))
+              Container(
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: TablerColors.info.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(50),
+                ),
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation(TablerColors.info),
+                ),
+              )
+            else
+              Icon(
+                Icons.info_outline,
+                size: 48,
+                color: TablerColors.textSecondary,
+              ),
+
+            SizedBox(height: 16),
+
+            Text(
+              frameStatus,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: isCollectingFrames
+                    ? TablerColors.primary
+                    : TablerColors.textSecondary,
+              ),
+            ),
+
+            // 프레임 수집 중일 때 진행률 표시
+            if (isCollectingFrames) ...[
+              SizedBox(height: 16),
+              SizedBox(
+                width: 200,
+                child: LinearProgressIndicator(
+                  value: frameBuffer.length / 30,
+                  backgroundColor: TablerColors.border,
+                  valueColor: AlwaysStoppedAnimation(TablerColors.primary),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // 번역 결과가 있으면 표시
+    if (resultKorean == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.translate, size: 48, color: TablerColors.textSecondary),
+            SizedBox(height: 16),
+            Text(
+              '번역 결과가 여기에\n표시됩니다',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: TablerColors.textSecondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 수어 -> 텍스트 번역 결과
+          if (isSignToKorean && resultKorean != null) ...[
+            Container(
+              margin: EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: TablerColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: TablerColors.primary.withOpacity(0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    selectedLang,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: TablerColors.primary,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  if (selectedLang == '한국어')
+                    Text(
+                      '$resultKorean',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: TablerColors.textPrimary,
+                      ),
+                    ),
+                  if (selectedLang == 'English')
+                    Text(
+                      '$resultEnglish',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: TablerColors.textPrimary,
+                      ),
+                    ),
+                  if (selectedLang == '日本語')
+                    Text(
+                      '$resultJapanese',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: TablerColors.textPrimary,
+                      ),
+                    ),
+                  if (selectedLang == '中文')
+                    Text(
+                      '$resultChinese',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: TablerColors.textPrimary,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget buildVideoResult() {
+    if (!isSignToKorean && decodeFrames.isNotEmpty) {
+      return Column(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: AnimationWidget(
+                    key: animationKey,
+                    frames: decodeFrames,
+                    fps: 12.0,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: TablerButton(
+              text: '다시보기',
+              icon: Icons.replay,
+              outline: true,
+              onPressed: () => animationKey.currentState?.reset(),
+            ),
+          ),
+        ],
+      );
+    } else if (!isSignToKorean) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.video_library_outlined,
+              size: 48,
+              color: TablerColors.textSecondary,
+            ),
+            SizedBox(height: 16),
+            Text(
+              '수어 영상이 여기에\n표시됩니다',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: TablerColors.textSecondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.translate, size: 48, color: TablerColors.textSecondary),
+          SizedBox(height: 16),
+          Text(
+            '번역 결과가 여기에\n표시됩니다',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 16, color: TablerColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildTranslateButton() {
+    return Center(
+      child: SizedBox(
+        width: 200,
+        height: 48,
+        child: TablerButton(
+          text: isTranslating ? '번역 중...' : '번역하기',
+          icon: isTranslating ? null : Icons.translate,
+          onPressed: isTranslating ? null : handleTranslate,
         ),
       ),
     );

@@ -30,8 +30,8 @@ class DaybarWidget extends StatelessWidget {
           child: Column(
             children: [
               Container(
-                width: 36,
-                height: 36,
+                width: 30,
+                height: 30,
                 decoration: BoxDecoration(
                   color: isCurrent
                       ? Colors.pink
