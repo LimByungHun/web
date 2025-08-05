@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:sign_web/widget/animation_widget.dart';
-import 'package:video_player/video_player.dart';
 import 'package:sign_web/service/bookmark_api.dart';
 import 'package:sign_web/service/word_detail_api.dart';
 import 'package:sign_web/widget/indexbar.dart';
@@ -38,7 +37,6 @@ class DictionaryState extends State<Dictionary> {
   String? selectedDefinition;
   bool isLoadingDetail = false;
 
-  VideoPlayerController? controller;
   late Future<void> initVideoPlayer;
 
   final GlobalKey<AnimationWidgetState> animationKey =
@@ -80,7 +78,6 @@ class DictionaryState extends State<Dictionary> {
 
   @override
   void dispose() {
-    controller?.dispose();
     super.dispose();
   }
 

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sign_web/service/study_api.dart'; // StudyApi 가져오기
 
 class CourseModel with ChangeNotifier {
   String? _selectedCourse;
@@ -10,7 +11,9 @@ class CourseModel with ChangeNotifier {
   int _currentDay = 1;
   int _totalDays = 1;
   Map<int, List<int>> _completedSteps = {};
-
+  Map<String, List<Map<String, dynamic>>> _reviewableStep5Words = {};
+  Map<String, List<Map<String, dynamic>>> get reviewableStep5Words =>
+      _reviewableStep5Words;
   String? get selectedCourse => _selectedCourse;
   int get sid => _sid;
   List<Map<String, dynamic>> get words => _words;
@@ -18,7 +21,6 @@ class CourseModel with ChangeNotifier {
   int get currentDay => _currentDay;
   int get totalDays => _totalDays;
   Map<int, List<int>> get completedSteps => _completedSteps;
-
   bool get isStepCompleted => _currentDay > _totalDays;
 
   Future<void> loadFromPrefs() async {
@@ -34,7 +36,6 @@ class CourseModel with ChangeNotifier {
     _currentDay = prefs.getInt('currentDay') ?? 1;
     _totalDays = prefs.getInt('totalDays') ?? 1;
 
-    // 완료된 스텝 정보도 불러오기 (없으면 빈 맵)
     final completed = prefs.getString('completedSteps');
     _completedSteps = completed != null
         ? Map<int, List<int>>.from(
@@ -103,7 +104,7 @@ class CourseModel with ChangeNotifier {
         return s;
       }
     }
-    return null; // 모두 완료됨
+    return null;
   }
 
   void completeOneDay() {
@@ -124,14 +125,11 @@ class CourseModel with ChangeNotifier {
 
   void updateCompletedSteps(Map<int, List<int>> data) {
     _completedSteps = data;
-
-    // 현재 선택된 코스가 있으면 해당 SID 기준으로 currentDay 계산
     if (_sid != 0 && _completedSteps.containsKey(_sid)) {
       _currentDay = getNextUncompletedStep() ?? _totalDays + 1;
     } else {
       _currentDay = 1;
     }
-
     saveToPrefs();
     notifyListeners();
   }
@@ -169,6 +167,16 @@ class CourseModel with ChangeNotifier {
     });
 
     return result;
+  }
+
+  Future<void> loadReviewableStep5Words() async {
+    try {
+      final data = await StudyApi.getCompletedStep5Words();
+      _reviewableStep5Words = data;
+      notifyListeners();
+    } catch (e) {
+      print('복습 단어 로딩 실패: $e');
+    }
   }
 
   void debugWords() {
