@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-const String baseUrl = 'http://10.101.170.12';
+const String baseUrl = 'http://10.101.170.23';
 
 class LogoutApi {
   static Future<bool> logout(String refreshToken) async {

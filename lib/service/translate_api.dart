@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:sign_web/service/token_storage.dart';
 
-const String baseUrl = 'http://10.101.170.12';
+const String baseUrl = 'http://10.101.170.23';
 
 class TranslateApi {
   // 수어 -> 단어
@@ -232,12 +232,7 @@ class TranslateApi {
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        return {
-          'korean': result['korean'],
-          'english': result['english']['text'] ?? '',
-          'japanese': result['japanese']['text'] ?? '',
-          'chinese': result['chinese']['text'] ?? '',
-        };
+        return {'korean': result['korean']};
       } else {
         print("번역 실패: ${response.statusCode}");
       }

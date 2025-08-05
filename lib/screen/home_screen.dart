@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:sign_web/model/course_model.dart';
 import 'package:sign_web/service/study_api.dart';
 import 'package:sign_web/theme/tabler_theme.dart';
+import 'package:sign_web/widget/review_widget.dart';
 import 'package:sign_web/widget/sidebar_widget.dart';
 import 'package:sign_web/widget/daybar_widget.dart';
 import 'package:sign_web/widget/tablerui_widget.dart';
@@ -27,6 +28,8 @@ class HomeScreenState extends State<HomeScreen> {
     super.initState();
     context.read<CourseModel>().loadFromPrefs();
     loadStudyStats();
+    context.read<CourseModel>().debugWords();
+    context.read<CourseModel>().loadReviewableStep5Words();
   }
 
   Future<void> loadStudyStats() async {
@@ -197,7 +200,7 @@ class HomeScreenState extends State<HomeScreen> {
           ),
         ),
         SizedBox(width: 20),
-        Expanded(flex: 30, child: buildReviewCard(courseModel)),
+        Expanded(flex: 30, child: ReviewCard()),
       ],
     );
   }
@@ -208,7 +211,7 @@ class HomeScreenState extends State<HomeScreen> {
         // 학습 코스 카드 (고정 높이)
         SizedBox(height: 290, child: buildCourseCardWithStats(courseModel)),
         // 복습 카드 (남은 공간 사용)
-        SizedBox(width: double.infinity, child: buildReviewCard(courseModel)),
+        SizedBox(width: double.infinity, child: ReviewCard()),
         SizedBox(width: double.infinity, child: buildStatsCard2()),
       ],
     );
@@ -537,121 +540,6 @@ class HomeScreenState extends State<HomeScreen> {
       learnedWords: learnedWordsCount,
       streakDays: streakDays,
       overallPercent: overallPercent,
-    );
-  }
-
-  Widget buildReviewCard(CourseModel courseModel) {
-    final courseWordsMap = courseModel.getCompletedCourseStep5Words();
-
-    return TablerCard(
-      title: '복습하기',
-      actions: courseWordsMap.length > 3
-          ? [
-              TablerButton(
-                text: '전체보기',
-                small: true,
-                outline: true,
-                onPressed: () => GoRouter.of(context).push(
-                  '/review_all',
-                  extra: {'courseWordsMap': courseWordsMap},
-                ),
-              ),
-            ]
-          : null,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: 100),
-        child: courseWordsMap.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.quiz_outlined,
-                      size: 48,
-                      color: TablerColors.textSecondary,
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      '복습할 내용이 없습니다',
-                      style: TextStyle(color: TablerColors.textSecondary),
-                    ),
-                  ],
-                ),
-              )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: courseWordsMap.entries.take(3).map((entry) {
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: 12),
-                    child: Container(
-                      padding: EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: TablerColors.border),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final isNarrow = constraints.maxWidth < 200;
-
-                          if (isNarrow) {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  '${entry.key} 복습',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                    color: TablerColors.textPrimary,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                SizedBox(height: 8),
-                                TablerButton(
-                                  text: '시작',
-                                  small: true,
-                                  onPressed: () => GoRouter.of(context).push(
-                                    '/review',
-                                    extra: {
-                                      'words': entry.value,
-                                      'title': '${entry.key} 복습 퀴즈',
-                                    },
-                                  ),
-                                ),
-                              ],
-                            );
-                          } else {
-                            return Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '${entry.key} 복습',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w500,
-                                      color: TablerColors.textPrimary,
-                                    ),
-                                  ),
-                                ),
-                                TablerButton(
-                                  text: '시작',
-                                  small: true,
-                                  onPressed: () => GoRouter.of(context).push(
-                                    '/review',
-                                    extra: {
-                                      'words': entry.value,
-                                      'title': '${entry.key} 복습 퀴즈',
-                                    },
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-      ),
     );
   }
 }

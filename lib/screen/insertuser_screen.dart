@@ -122,11 +122,11 @@ class InsertuserScreenState extends State<InsertuserScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // 헤더
-                    _buildHeader(),
+                    buildHeader(),
                     SizedBox(height: 32),
 
                     // 아이디 입력 및 중복확인
-                    _buildTextField(
+                    buildTextField(
                       controller: userController,
                       label: '아이디',
                       hintText: '사용할 아이디를 입력하세요',
@@ -151,14 +151,14 @@ class InsertuserScreenState extends State<InsertuserScreen> {
 
                     if (isIDAvailable) ...[
                       SizedBox(height: 24),
-                      _buildTextField(
+                      buildTextField(
                         controller: idController,
                         label: '닉네임',
                         hintText: '사용할 닉네임을 입력하세요',
                         prefixIcon: Icons.badge_outlined,
                       ),
                       SizedBox(height: 16),
-                      _buildTextField(
+                      buildTextField(
                         controller: pwController,
                         label: '비밀번호',
                         hintText: '비밀번호를 입력하세요',
@@ -166,7 +166,7 @@ class InsertuserScreenState extends State<InsertuserScreen> {
                         obscureText: true,
                       ),
                       SizedBox(height: 16),
-                      _buildTextField(
+                      buildTextField(
                         controller: passwordController,
                         label: '비밀번호 확인',
                         hintText: '비밀번호를 다시 입력하세요',
@@ -226,7 +226,7 @@ class InsertuserScreenState extends State<InsertuserScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget buildHeader() {
     return Column(
       children: [
         Container(
@@ -257,7 +257,7 @@ class InsertuserScreenState extends State<InsertuserScreen> {
     );
   }
 
-  Widget _buildTextField({
+  Widget buildTextField({
     required TextEditingController controller,
     required String label,
     required String hintText,
