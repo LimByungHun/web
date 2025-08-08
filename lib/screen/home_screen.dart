@@ -206,14 +206,17 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Widget buildTabletLayoutImproved(CourseModel courseModel) {
-    return Column(
-      children: [
-        // 학습 코스 카드 (고정 높이)
-        SizedBox(height: 290, child: buildCourseCardWithStats(courseModel)),
-        // 복습 카드 (남은 공간 사용)
-        SizedBox(width: double.infinity, child: ReviewCard()),
-        SizedBox(width: double.infinity, child: buildStatsCard2()),
-      ],
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // 학습 코스 카드 (고정 높이)
+          buildCourseCardWithStats(courseModel),
+          SizedBox(height: 20),
+          // 복습 카드 (남은 공간 사용)
+          ReviewCard(),
+          buildStatsCard2(),
+        ],
+      ),
     );
   }
 
@@ -373,10 +376,10 @@ class HomeScreenState extends State<HomeScreen> {
       title: hasCourse ? '현재 학습 코스' : '학습 시작하기',
       child: hasCourse
           ? Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 // 상단: 진행 단계 (고정 높이)
                 Container(
-                  height: 120,
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: TablerColors.primary.withOpacity(0.1),
