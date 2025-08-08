@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -23,6 +22,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   bool isCameraOn = false;
   bool isTranslating = false;
   XFile? capturedVideo;
+  bool useRealtimeMode = true;
 
   final TextEditingController inputController = TextEditingController();
 
@@ -48,6 +48,14 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   bool isCollectingFrames = false;
   bool hasCollectedFramesOnce = false;
 
+  // 프레임 수집 관련 변수들
+  Timer? frameCollectionTimer;
+  static const int frameCollectionCount = 45; // 30에서 45로 변경
+  static const int frameCollectionIntervalMs = 100; // 50에서 100으로 늘림
+  static const Duration frameCollectionInterval = Duration(
+    milliseconds: frameCollectionIntervalMs,
+  );
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +63,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
   @override
   void dispose() {
+    _stopFrameCollection();
     stopCamera();
     inputController.dispose();
     super.dispose();
@@ -75,6 +84,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
     try {
       final result = await TranslateApi.sendFrames(base64Frames);
+
       if (result != null) {
         print("서버 응답 성공: $result");
         if (!hasCollectedFramesOnce) {
@@ -94,6 +104,57 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         frameStatus = "전송 오류 발생";
       });
     }
+  }
+
+  /// 프레임 수집을 시작합니다.
+  void _startFrameCollection() {
+    frameCollectionTimer?.cancel();
+    frameCollectionTimer = Timer.periodic(frameCollectionInterval, (
+      timer,
+    ) async {
+      if (!isCameraOn || cameraController == null) {
+        timer.cancel();
+        return;
+      }
+
+      try {
+        final picture = await cameraController!.takePicture();
+        final bytes = await picture.readAsBytes();
+        frameBuffer.add(bytes);
+
+        if (!hasCollectedFramesOnce) {
+          setState(() {
+            isCollectingFrames = true;
+            frameStatus =
+                "프레임 수집 중... (${frameBuffer.length}/$frameCollectionCount)\n지금 움직이세요!";
+          });
+        }
+
+        // 프레임이 충분히 모이면 전송하고 버퍼만 클리어 (타이머는 계속 실행)
+        if (frameBuffer.length >= frameCollectionCount) {
+          final framesToSend = List<Uint8List>.from(frameBuffer);
+          frameBuffer.clear();
+
+          await sendFrames(framesToSend);
+
+          if (!hasCollectedFramesOnce) {
+            hasCollectedFramesOnce = true;
+            setState(() {
+              frameStatus = "";
+              isCollectingFrames = false;
+            });
+          }
+        }
+      } catch (e) {
+        print("웹 캡처 오류: $e");
+      }
+    });
+  }
+
+  /// 프레임 수집을 중지합니다.
+  void _stopFrameCollection() {
+    frameCollectionTimer?.cancel();
+    frameCollectionTimer = null;
   }
 
   Future<void> startCamera() async {
@@ -117,37 +178,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       await cameraController!.initialize();
 
       if (kIsWeb) {
-        Timer.periodic(Duration(milliseconds: 200), (timer) async {
-          if (!isCameraOn || cameraController == null) {
-            timer.cancel();
-            return;
-          }
-
-          try {
-            final picture = await cameraController!.takePicture();
-            final bytes = await picture.readAsBytes();
-            frameBuffer.add(bytes);
-
-            // 프레임 수집 상태 업데이트
-            if (!hasCollectedFramesOnce) {
-              setState(() {
-                isCollectingFrames = true;
-                frameStatus =
-                    "프레임 수집 중... (${frameBuffer.length}/45)\n지금 움직이세요!";
-              });
-            }
-
-            if (frameBuffer.length >= 45) {
-              await sendFrames(List.from(frameBuffer));
-              frameBuffer.clear();
-              if (!hasCollectedFramesOnce) {
-                hasCollectedFramesOnce = true;
-              }
-            }
-          } catch (e) {
-            print("웹 캡처 오류: $e");
-          }
-        });
+        _startFrameCollection();
       } else {
         await cameraController!.startImageStream(onFrameAvailable);
       }
@@ -189,6 +220,9 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
     print("카메라 중지 요청 수신");
 
+    // 프레임 수집 타이머 중지
+    _stopFrameCollection();
+
     try {
       // 스트림 중지 (예외 없이 진행되도록)
       if (cameraController!.value.isStreamingImages) {
@@ -202,10 +236,10 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
     if (frameBuffer.isNotEmpty) {
       try {
-        print("잔여 프레임 ${frameBuffer.length}개 서버에 전송 중...");
+        print("잔여 프레임 ${frameBuffer.length}개 정리 중...");
         frameBuffer.clear();
       } catch (e) {
-        print("잔여 프레임 전송 실패: $e");
+        print("잔여 프레임 정리 실패: $e");
       }
     }
 
@@ -223,6 +257,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       setState(() {
         isCameraOn = false;
         frameStatus = "";
+        hasCollectedFramesOnce = false;
       });
     }
   }
@@ -240,11 +275,12 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         if (!hasCollectedFramesOnce) {
           setState(() {
             isCollectingFrames = true;
-            frameStatus = "프레임 수집 중... (${frameBuffer.length}/45)\n지금 움직이세요!";
+            frameStatus =
+                "프레임 수집 중... (${frameBuffer.length}/$frameCollectionCount)\n지금 움직이세요!";
           });
         }
 
-        if (frameBuffer.length > 45) {
+        if (frameBuffer.length > frameCollectionCount) {
           await sendFrames(List.from(frameBuffer));
           frameBuffer.clear();
           if (!hasCollectedFramesOnce) {
@@ -282,6 +318,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     frameStatus = '';
     isCollectingFrames = false;
     hasCollectedFramesOnce = false;
+    frameBuffer.clear();
   }
 
   Future<Uint8List?> convertYUV420toJPEG(CameraImage image) async {
@@ -826,50 +863,11 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // 상태에 따른 아이콘
-            if (isCollectingFrames)
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: TablerColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(50),
-                ),
-                child: Icon(
-                  Icons.videocam,
-                  size: 48,
-                  color: TablerColors.primary,
-                ),
-              )
-            else if (frameStatus.contains("전송"))
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: TablerColors.warning.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(50),
-                ),
-                child: Icon(
-                  Icons.cloud_upload,
-                  size: 48,
-                  color: TablerColors.warning,
-                ),
-              )
-            else if (frameStatus.contains("분석"))
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: TablerColors.info.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(50),
-                ),
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation(TablerColors.info),
-                ),
-              )
-            else
-              Icon(
-                Icons.info_outline,
-                size: 48,
-                color: TablerColors.textSecondary,
-              ),
+            Icon(
+              Icons.info_outline,
+              size: 48,
+              color: TablerColors.textSecondary,
+            ),
 
             SizedBox(height: 16),
 
@@ -879,24 +877,9 @@ class TranslateScreenWebState extends State<TranslateScreen> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
-                color: isCollectingFrames
-                    ? TablerColors.primary
-                    : TablerColors.textSecondary,
+                color: TablerColors.textSecondary,
               ),
             ),
-
-            // 프레임 수집 중일 때 진행률 표시
-            if (isCollectingFrames) ...[
-              SizedBox(height: 16),
-              SizedBox(
-                width: 200,
-                child: LinearProgressIndicator(
-                  value: frameBuffer.length / 45,
-                  backgroundColor: TablerColors.border,
-                  valueColor: AlwaysStoppedAnimation(TablerColors.primary),
-                ),
-              ),
-            ],
           ],
         ),
       );
