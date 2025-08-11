@@ -1,10 +1,11 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:sign_web/service/token_storage.dart';
 
-const String baseUrl = 'http://10.101.170.142';
+const String baseUrl = 'http://10.101.170.52';
 
 class TranslateApi {
   // 수어 -> 단어
@@ -103,33 +104,87 @@ class TranslateApi {
 
     print("프레임 ${base64Frames.length}개 서버로 전송 시작...");
 
-    try {
-      final response = await http.post(
-        url,
-        headers: {
-          'Authorization': 'Bearer $accessToken',
-          'X-Refresh-Token': refreshToken ?? '',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({'frames': base64Frames}),
+    // 대용량 본문으로 인한 실패를 줄이기 위해 프레임을 청크로 쪼개서 전송
+    const int chunkSize = 12; // 한 요청당 최대 프레임 수
+    String? finalStatus;
+
+    for (int start = 0; start < base64Frames.length; start += chunkSize) {
+      final slice = base64Frames.sublist(
+        start,
+        (start + chunkSize > base64Frames.length)
+            ? base64Frames.length
+            : start + chunkSize,
       );
 
-      final newToken = response.headers['x-new-access-token'];
-      if (newToken != null && newToken.isNotEmpty) {
-        print("새 액세스 토큰 수신 및 저장 완료.");
-        await TokenStorage.setAccessToken(newToken);
+      final status = await _postAnalyzeFrames(
+        url,
+        accessToken,
+        refreshToken,
+        slice,
+      );
+
+      if (status != null) {
+        finalStatus = status; // 마지막 성공 상태를 유지
+      } else {
+        print("청크 전송 실패: index $start/${base64Frames.length}");
+      }
+    }
+
+    return finalStatus;
+  }
+
+  static Future<String?> _postAnalyzeFrames(
+    Uri url,
+    String accessToken,
+    String? refreshToken,
+    List<String> frames,
+  ) async {
+    // 간단한 재시도(백오프)
+    const List<Duration> delays = [
+      Duration(milliseconds: 0),
+      Duration(milliseconds: 600),
+      Duration(milliseconds: 1200),
+    ];
+
+    for (int attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt].inMilliseconds > 0) {
+        await Future.delayed(delays[attempt]);
       }
 
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        print("서버 프레임 분석 성공: ${result['status']}");
-        return result['status'];
-      } else {
-        print("서버 프레임 분석 실패: Status ${response.statusCode}");
-        print("서버 응답 본문: ${response.body}");
+      try {
+        final response = await http
+            .post(
+              url,
+              headers: {
+                'Authorization': 'Bearer $accessToken',
+                'X-Refresh-Token': refreshToken ?? '',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({'frames': frames}),
+            )
+            .timeout(const Duration(seconds: 12));
+
+        final newToken = response.headers['x-new-access-token'];
+        if (newToken != null && newToken.isNotEmpty) {
+          await TokenStorage.setAccessToken(newToken);
+        }
+
+        if (response.statusCode == 200) {
+          final result = jsonDecode(response.body);
+          return result['status'];
+        } else {
+          print("서버 프레임 분석 실패(${response.statusCode}): ${response.body}");
+        }
+      } on http.ClientException catch (e) {
+        print("네트워크 예외(ClientException): $e");
+        // CORS/mixed-content나 네트워크 단절 가능성. 재시도.
+      } on Exception catch (e) {
+        if (e is TimeoutException) {
+          print("요청 타임아웃 – 재시도합니다 (attempt ${attempt + 1})");
+        } else {
+          print("예외 발생: $e");
+        }
       }
-    } catch (e) {
-      print("프레임 전송 중 예외 발생: $e");
     }
 
     return null;

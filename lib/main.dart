@@ -38,7 +38,7 @@ class MyApp extends StatelessWidget {
     final router = createRouter();
 
     return MaterialApp.router(
-      title: '수어 학습 앱',
+      title: '수어 술술',
       debugShowCheckedModeBanner: false,
       locale: const Locale('ko', 'KR'),
       supportedLocales: const [Locale('ko', 'KR'), Locale('en', 'US')],

@@ -1,10 +1,8 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class CameraWidget extends StatefulWidget {
   final void Function(XFile file)? onFinish;
@@ -37,22 +35,6 @@ class _CameraWidgetState extends State<CameraWidget> {
   }
 
   Future<void> initCamera() async {
-    // 웹이 아닌 경우에만 권한 요청
-    if (!kIsWeb) {
-      final cameraStatus = await Permission.camera.request();
-      final micStatus = await Permission.microphone.request();
-
-      if (!cameraStatus.isGranted || !micStatus.isGranted) {
-        Fluttertoast.showToast(
-          msg: '카메라 또는 마이크 권한이 거부되었습니다.',
-          gravity: ToastGravity.BOTTOM,
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
-        );
-        return;
-      }
-    }
-
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
@@ -70,9 +52,7 @@ class _CameraWidgetState extends State<CameraWidget> {
         frontCamera,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: kIsWeb
-            ? ImageFormatGroup.jpeg
-            : ImageFormatGroup.yuv420,
+        imageFormatGroup: ImageFormatGroup.jpeg,
       );
 
       await controller!.initialize();
@@ -84,24 +64,7 @@ class _CameraWidgetState extends State<CameraWidget> {
       if (widget.continuousMode) {
         startContinuousCapture();
       } else {
-        if (kIsWeb) {
-          startWebRecording();
-        } else {
-          await controller!.prepareForVideoRecording();
-          await controller!.startVideoRecording();
-
-          recordingTimer = Timer(Duration(seconds: 5), () async {
-            if (!mounted || isDisposed) return;
-            if (controller != null && controller!.value.isRecordingVideo) {
-              final file = await controller!.stopVideoRecording();
-              if (!kIsWeb) {
-                final size = await File(file.path).length();
-                print("영상 저장됨: ${file.path}, 크기: $size bytes");
-              }
-              widget.onFinish?.call(file);
-            }
-          });
-        }
+        startWebRecording();
       }
     } catch (e) {
       Fluttertoast.showToast(msg: "카메라 오류: $e");
@@ -109,42 +72,36 @@ class _CameraWidgetState extends State<CameraWidget> {
   }
 
   void startContinuousCapture() {
-    if (kIsWeb) {
-      bool isCapturing = false;
-      captureTimer = Timer.periodic(Duration(milliseconds: 200), (timer) async {
-        if (isDisposed || !mounted) {
-          timer.cancel();
-          return;
-        }
+    bool isCapturing = false;
+    captureTimer = Timer.periodic(Duration(milliseconds: 200), (timer) async {
+      if (isDisposed || !mounted) {
+        timer.cancel();
+        return;
+      }
 
-        if (controller != null &&
-            controller!.value.isInitialized &&
-            mounted &&
-            !isCapturing) {
-          isCapturing = true;
-          try {
-            final XFile image = await controller!.takePicture();
-            if (!mounted || isDisposed) return;
-            final bytes = await image.readAsBytes();
-            if (!mounted || isDisposed) return;
-            frameBuffer.add(bytes);
+      if (controller != null &&
+          controller!.value.isInitialized &&
+          mounted &&
+          !isCapturing) {
+        isCapturing = true;
+        try {
+          final XFile image = await controller!.takePicture();
+          if (!mounted || isDisposed) return;
+          final bytes = await image.readAsBytes();
+          if (!mounted || isDisposed) return;
+          frameBuffer.add(bytes);
 
-            if (frameBuffer.length >= 30) {
-              widget.onFramesAvailable?.call(List.from(frameBuffer));
-              frameBuffer.clear();
-            }
-          } catch (e) {
-            print("프레임 캡처 오류: $e");
-          } finally {
-            isCapturing = false;
+          if (frameBuffer.length >= 30) {
+            widget.onFramesAvailable?.call(List.from(frameBuffer));
+            frameBuffer.clear();
           }
+        } catch (e) {
+          print("프레임 캡처 오류: $e");
+        } finally {
+          isCapturing = false;
         }
-      });
-    } else {
-      controller!.startImageStream((image) {
-        if (!mounted || isDisposed) return;
-      });
-    }
+      }
+    });
   }
 
   void startWebRecording() {
@@ -215,10 +172,6 @@ class _CameraWidgetState extends State<CameraWidget> {
     captureTimer?.cancel();
     recordingTimer?.cancel();
     if (controller != null) {
-      if (controller!.value.isStreamingImages) {
-        controller!.stopImageStream();
-      }
-      if (controller!.value.isRecordingVideo) {}
       controller!.dispose();
     }
     super.dispose();

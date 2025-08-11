@@ -282,14 +282,6 @@ class StudycourceScreenState extends State<StudycourceScreen> {
                                   color: TablerColors.textPrimary,
                                 ),
                               ),
-                              SizedBox(height: 4),
-                              Text(
-                                '수어 학습 프로그램',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: TablerColors.textSecondary,
-                                ),
-                              ),
                             ],
                           ),
                         ),
