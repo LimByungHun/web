@@ -73,25 +73,30 @@ class UserScreenState extends State<UserScreen> {
             Sidebar(initialIndex: 6),
             VerticalDivider(width: 1, color: TablerColors.border),
             Expanded(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: 600),
-                  child: Padding(
+              child: SingleChildScrollView(
+                child: Center(
+                  child: Container(
+                    constraints: BoxConstraints(maxWidth: 600),
                     padding: EdgeInsets.all(24),
                     child: isLoading
-                        ? Center(
-                            child: CircularProgressIndicator(
-                              color: TablerColors.primary,
+                        ? SizedBox(
+                            height: 200,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                color: TablerColors.primary,
+                              ),
                             ),
                           )
                         : Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               SizedBox(height: 40),
                               buildProfileCard(),
                               SizedBox(height: 24),
                               buildSettingsCard(),
-                              Spacer(),
+                              SizedBox(height: 24),
                               buildDangerZoneCard(),
+                              SizedBox(height: 40),
                             ],
                           ),
                   ),

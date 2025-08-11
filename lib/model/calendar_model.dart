@@ -34,3 +34,32 @@ Widget streakInfo(String label, String number, String description) {
     ],
   );
 }
+
+class DayRecordItem {
+  final int sid;
+  final String studyCourse; // Study_Course
+  final int step;
+  final String? stepName; // StepName
+  final DateTime studyTime; // Study_Date (ISO8601)
+  final bool complete; // Complate
+
+  DayRecordItem({
+    required this.sid,
+    required this.studyCourse,
+    required this.step,
+    required this.stepName,
+    required this.studyTime,
+    required this.complete,
+  });
+
+  factory DayRecordItem.fromJson(Map<String, dynamic> json) {
+    return DayRecordItem(
+      sid: (json['sid'] as num).toInt(),
+      studyCourse: json['study_course'] as String,
+      step: (json['step'] as num).toInt(),
+      stepName: json['step_name'] as String?,
+      studyTime: DateTime.parse(json['study_time'] as String),
+      complete: json['complete'] as bool? ?? false,
+    );
+  }
+}
