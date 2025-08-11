@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -41,7 +42,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   List<Uint8List> decodeFrames = [];
 
   // 실시간 인식 결과 누적 및 폴링
-
   Timer? _recognitionPollingTimer;
   static const int _autoFinalizeWordCount = 3;
   bool _autoFinalized = false;
@@ -57,14 +57,21 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   List<String> translationHistory = []; // 번역 히스토리
   DateTime? lastTranslationTime;
 
-  // 존재(움직임) 자동 감지 상태
-  bool isSubjectPresent = false;
-  int? lastFrameSample;
-  int presenceScore = 0;
-  static const int presenceScoreEnter = 60; // 이 값 이상이면 존재로 판정
-  static const int presenceScoreExit = 30; // 이 값 이하이면 부재로 판정
-  static const int presenceScoreInc = 12; // 모션 있을 때 점수 증가량
-  static const int presenceScoreDecay = 6; // 모션 없을 때 점수 감소량
+  // 웹 기반 사람 감지 시스템
+  Uint8List? previousFrameBytes;
+  List<double> recentPresenceScores = []; // 최근 사람 존재 점수들
+  double presenceThreshold = 0.02; // 사람 감지 임계값
+  int presenceHistorySize = 3; // 사람 감지 히스토리 크기
+
+  // 적응형 임계값 조정
+  double adaptiveThreshold = 0.02;
+  List<double> backgroundNoise = []; // 배경 노이즈 레벨
+
+  // 관심 영역 기반 감지 (손/얼굴 영역)
+  List<Rect> interestRegions = [
+    Rect.fromLTWH(0.2, 0.1, 0.6, 0.4), // 상체 영역 (얼굴/어깨)
+    Rect.fromLTWH(0.1, 0.3, 0.8, 0.6), // 손 영역
+  ];
 
   // 프레임 수집 관련 변수들
   Timer? frameCollectionTimer;
@@ -77,25 +84,34 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   // 웹 캡처 중복 호출 방지
   bool _isCapturingWeb = false;
 
+  // 웹 기반 카메라 테두리 시스템
+  Color _dynamicBorderColor = TablerColors.border;
+  double _dynamicBorderWidth = 2.0;
+  double _borderGlowIntensity = 0.0;
+  bool _isPersonDetected = false;
+  Timer? _borderAnimationTimer;
+
+  // 테두리 애니메이션 상태
+  double _borderPulseValue = 0.0;
+  bool _isBorderPulsing = false;
+
   // 상태 텍스트 기반 보조 플래그
   bool get _isErrorState =>
       frameStatus.contains('오류') || frameStatus.contains('실패');
   bool get _isAnalyzingState => frameStatus.contains('분석');
-  bool get _isRecognizingNow =>
+  bool get isRecognitionSuccess =>
+      resultKorean != null && resultKorean!.isNotEmpty;
+  bool get isRecognizingNow =>
       isCameraOn &&
       (_isAnalyzingState || isCollectingFrames || frameBuffer.isNotEmpty);
 
-  Color get _cameraBorderColor {
-    if (!isCameraOn) return TablerColors.border;
-    if (_isErrorState) return TablerColors.danger;
-    return isSubjectPresent ? TablerColors.success : TablerColors.danger;
-  }
-
-  double get _cameraBorderWidth => _isRecognizingNow ? 3 : 2;
+  Color get _cameraBorderColor => _dynamicBorderColor;
+  double get _cameraBorderWidth => _dynamicBorderWidth;
 
   @override
   void initState() {
     super.initState();
+    _startBorderAnimation();
   }
 
   @override
@@ -104,10 +120,21 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     _stopRealtimePolling();
     stopCamera();
     inputController.dispose();
+    _borderAnimationTimer?.cancel();
+
+    // 움직임 감지 시스템 리소스 정리
+    previousFrameBytes = null;
+
     super.dispose();
   }
 
   Future<void> sendFrames(List<Uint8List> frames) async {
+    // 카메라가 꺼져있으면 전송하지 않음
+    if (!isCameraOn) {
+      print("카메라가 꺼져있어 프레임 전송을 중단합니다.");
+      return;
+    }
+
     if (!hasCollectedFramesOnce) {
       setState(() {
         frameStatus = "프레임 ${frames.length}개 서버로 전송 중...";
@@ -121,6 +148,12 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         .toList();
 
     try {
+      // 전송 중에도 카메라 상태 재확인
+      if (!isCameraOn) {
+        print("전송 중 카메라가 꺼져 프레임 전송을 중단합니다.");
+        return;
+      }
+
       final result = await TranslateApi.sendFrames(base64Frames);
 
       if (result != null) {
@@ -149,6 +182,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     frameCollectionTimer = Timer.periodic(frameCollectionInterval, (
       timer,
     ) async {
+      // 카메라가 꺼져있거나 컨트롤러가 없으면 즉시 중단
       if (!isCameraOn || cameraController == null) {
         timer.cancel();
         return;
@@ -158,23 +192,52 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         if (_isCapturingWeb) return; // 중복 캡처 방지
         _isCapturingWeb = true;
 
+        // 추가 안전 검사: 카메라가 꺼져있는지 다시 한번 확인
+        if (!isCameraOn || cameraController == null) {
+          _isCapturingWeb = false;
+          return;
+        }
+
         final picture = await cameraController!.takePicture();
         final bytes = await picture.readAsBytes();
-        frameBuffer.add(bytes);
 
-        // 존재(움직임) 감지 업데이트
-        _updatePresence(bytes);
+        // 프레임 수집 중단 여부 재확인
+        if (!isCameraOn) {
+          _isCapturingWeb = false;
+          return;
+        }
 
-        if (!hasCollectedFramesOnce) {
-          setState(() {
-            isCollectingFrames = true;
-            frameStatus =
-                "프레임 수집 중... (${frameBuffer.length}/$frameCollectionCount)\n지금 움직이세요!";
-          });
+        // 웹 기반 실시간 프레임 분석 및 테두리 업데이트
+        await _analyzeFrameAndUpdateBorder(bytes);
+
+        // 사람이 감지되었을 때만 프레임 수집
+        if (_isPersonDetected) {
+          frameBuffer.add(bytes);
+
+          if (!hasCollectedFramesOnce) {
+            setState(() {
+              isCollectingFrames = true;
+            });
+          }
+        } else {
+          // 사람이 감지되지 않으면 프레임 버퍼 클리어
+          if (frameBuffer.isNotEmpty) {
+            frameBuffer.clear();
+            setState(() {
+              isCollectingFrames = false;
+            });
+          }
         }
 
         // 프레임이 충분히 모이면 전송하고 버퍼만 클리어
         if (frameBuffer.length >= frameCollectionCount) {
+          // 전송 전에 카메라 상태 재확인
+          if (!isCameraOn) {
+            frameBuffer.clear();
+            _isCapturingWeb = false;
+            return;
+          }
+
           final framesToSend = List<Uint8List>.from(frameBuffer);
           frameBuffer.clear();
 
@@ -201,49 +264,315 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     frameCollectionTimer = null;
   }
 
-  // 프레임 바이트를 샘플링해 간단한 변화량 계산
-  int _computeSample(Uint8List bytes) {
-    int sum = 0;
-    final int step = bytes.length > 200000 ? 400 : 200; // 대략 샘플 간격
-    for (int i = 0; i < bytes.length; i += step) {
-      sum += bytes[i];
-    }
-    return sum;
+  /// 테두리 애니메이션 시작
+  void _startBorderAnimation() {
+    _borderAnimationTimer = Timer.periodic(const Duration(milliseconds: 50), (
+      timer,
+    ) {
+      if (mounted) {
+        setState(() {
+          _borderPulseValue = (_borderPulseValue + 0.1) % (2 * pi);
+        });
+      }
+    });
   }
 
-  void _updatePresence(Uint8List bytes) {
-    final int sample = _computeSample(bytes);
+  /// 웹 기반 실시간 프레임 분석 및 테두리 업데이트
+  Future<void> _analyzeFrameAndUpdateBorder(Uint8List frameBytes) async {
+    try {
+      // 사람 감지
+      await _detectPerson(frameBytes);
 
-    if (lastFrameSample != null) {
-      final int diff = (sample - lastFrameSample!).abs();
-      // 프레임당 샘플 개수에 비례한 간단 임계값
-      final int step = bytes.length > 200000 ? 400 : 200;
-      final int samples = (bytes.length + step - 1) ~/ step;
-      final int dynamicThreshold = samples * 8; // 기본 민감도
+      // 테두리 상태 업데이트
+      _updateBorderState();
+    } catch (e) {
+      print('프레임 분석 오류: $e');
+    }
+  }
 
-      final bool hasMotion = diff > dynamicThreshold;
-      if (hasMotion) {
-        presenceScore = (presenceScore + presenceScoreInc).clamp(0, 100);
-      } else {
-        presenceScore = (presenceScore - presenceScoreDecay).clamp(0, 100);
+  /// 고급 사람 감지 (웹 최적화)
+  Future<void> _detectPerson(Uint8List frameBytes) async {
+    try {
+      if (previousFrameBytes == null) {
+        previousFrameBytes = Uint8List.fromList(frameBytes);
+        return;
       }
 
-      final bool enter = presenceScore >= presenceScoreEnter;
-      final bool exit = presenceScore <= presenceScoreExit;
+      double presenceScore = await _calculateAdvancedPresenceScore(frameBytes);
 
-      bool changed = false;
-      if (enter && !isSubjectPresent) {
-        isSubjectPresent = true;
-        changed = true;
-      } else if (exit && isSubjectPresent) {
-        isSubjectPresent = false;
-        changed = true;
+      // 사람 존재 히스토리 관리
+      recentPresenceScores.add(presenceScore);
+      if (recentPresenceScores.length > presenceHistorySize) {
+        recentPresenceScores.removeAt(0);
       }
 
-      if (changed && mounted) setState(() {});
+      // 적응형 임계값 조정
+      _updateAdaptiveThreshold();
+
+      // 스무딩된 사람 존재 점수 계산
+      double smoothedPresence = _getSmoothedPresenceScore();
+
+      // 사람 감지 (여러 조건 체크)
+      bool hasPerson = _evaluatePresence(smoothedPresence);
+
+      // 디버깅을 위한 로그 추가
+      print(
+        '사람 감지 결과: 점수=$smoothedPresence, 임계값=$adaptiveThreshold, 감지됨=$hasPerson',
+      );
+
+      // 프레임 수집 상태와 연동하여 실제 인식 가능한 상태 판단
+      bool canRecognize =
+          hasPerson &&
+          !isCollectingFrames &&
+          frameBuffer.length < frameCollectionCount;
+
+      setState(() {
+        _isPersonDetected = hasPerson;
+        // 사람이 감지되고 프레임 수집이 가능한 상태일 때만 인식 준비 완료
+        if (canRecognize && !isCollectingFrames) {
+          frameStatus = "수어 동작을 시작하세요";
+        } else if (hasPerson && isCollectingFrames) {
+          frameStatus =
+              "프레임 수집 중... (${frameBuffer.length}/$frameCollectionCount)";
+        } else if (hasPerson && !canRecognize) {
+          frameStatus = "잠시만 기다려주세요...";
+        } else {
+          frameStatus = "카메라에 사람이 보이지 않습니다";
+        }
+      });
+
+      previousFrameBytes = Uint8List.fromList(frameBytes);
+    } catch (e) {
+      print('고급 사람 감지 오류: $e');
+    }
+  }
+
+  /// 고급 사람 존재 점수 계산
+  Future<double> _calculateAdvancedPresenceScore(Uint8List frameBytes) async {
+    double totalPresence = 0.0;
+    int validRegions = 0;
+
+    // 관심 영역별로 사람 존재 계산
+    for (Rect region in interestRegions) {
+      double regionPresence = await _calculateRegionPresence(
+        frameBytes,
+        region,
+      );
+      if (regionPresence > 0) {
+        totalPresence += regionPresence;
+        validRegions++;
+      }
     }
 
-    lastFrameSample = sample;
+    return validRegions > 0 ? totalPresence / validRegions : 0.0;
+  }
+
+  /// 특정 영역의 사람 존재 계산
+  Future<double> _calculateRegionPresence(
+    Uint8List frameBytes,
+    Rect region,
+  ) async {
+    if (previousFrameBytes == null) return 0.0;
+
+    // 프레임 크기 추정 (일반적인 JPEG 프레임 크기 가정)
+    int estimatedWidth = 640;
+    int estimatedHeight = 480;
+
+    // 영역 좌표 계산
+    int startX = (region.left * estimatedWidth).round();
+    int endX = ((region.left + region.width) * estimatedWidth).round();
+    int startY = (region.top * estimatedHeight).round();
+    int endY = ((region.top + region.height) * estimatedHeight).round();
+
+    double regionPresence = 0.0;
+    int sampleCount = 0;
+
+    // 영역 내에서 샘플링하여 사람 존재 계산
+    int step = 50; // 더 세밀한 샘플링
+    for (
+      int i = 0;
+      i < frameBytes.length - 2 && i < previousFrameBytes!.length - 2;
+      i += step
+    ) {
+      // 대략적인 위치 계산 (정확하지 않지만 웹에서는 충분)
+      int approxY = i ~/ (estimatedWidth * 3); // RGB 가정
+      int approxX = (i % (estimatedWidth * 3)) ~/ 3;
+
+      // 관심 영역 내인지 확인
+      if (approxX >= startX &&
+          approxX < endX &&
+          approxY >= startY &&
+          approxY < endY) {
+        // RGB 값 추출 (안전한 범위 체크)
+        int r1 = frameBytes[i];
+        int g1 = frameBytes[i + 1];
+        int b1 = frameBytes[i + 2];
+
+        int r2 = previousFrameBytes![i];
+        int g2 = previousFrameBytes![i + 1];
+        int b2 = previousFrameBytes![i + 2];
+
+        // 현재 프레임의 밝기와 색상 정보
+        double currentBrightness = (r1 + g1 + b1) / 3.0;
+        double currentSaturation = (max(max(r1, g1), b1) - min(min(r1, g1), b1))
+            .toDouble();
+
+        // 이전 프레임의 밝기와 색상 정보
+        double previousBrightness = (r2 + g2 + b2) / 3.0;
+        double previousSaturation =
+            (max(max(r2, g2), b2) - min(min(r2, g2), b2)).toDouble();
+
+        // 밝기 변화와 색상 변화를 종합적으로 판단
+        double brightnessChange =
+            (currentBrightness - previousBrightness).abs() / 255.0;
+        double saturationChange =
+            (currentSaturation - previousSaturation).abs() / 255.0;
+
+        // 사람 존재 점수 계산 (밝기 + 색상 변화)
+        double pixelPresence =
+            (brightnessChange * 0.7 + saturationChange * 0.3);
+        regionPresence += pixelPresence;
+        sampleCount++;
+      }
+    }
+
+    return sampleCount > 0 ? regionPresence / sampleCount : 0.0;
+  }
+
+  /// 적응형 임계값 업데이트
+  void _updateAdaptiveThreshold() {
+    if (recentPresenceScores.length < 3) return;
+
+    // 최근 사람 존재의 평균과 표준편차 계산
+    double mean =
+        recentPresenceScores.reduce((a, b) => a + b) /
+        recentPresenceScores.length;
+    double variance =
+        recentPresenceScores
+            .map((score) => pow(score - mean, 2))
+            .reduce((a, b) => a + b) /
+        recentPresenceScores.length;
+    double stdDev = sqrt(variance);
+
+    // 배경 노이즈 레벨 추정
+    backgroundNoise.add(mean);
+    if (backgroundNoise.length > 10) {
+      backgroundNoise.removeAt(0);
+    }
+
+    double avgNoise =
+        backgroundNoise.reduce((a, b) => a + b) / backgroundNoise.length;
+
+    // 적응형 임계값 = 배경 노이즈 + (표준편차 * 2)
+    adaptiveThreshold = (avgNoise + (stdDev * 2)).clamp(0.01, 0.15);
+  }
+
+  /// 스무딩된 사람 존재 점수 계산
+  double _getSmoothedPresenceScore() {
+    if (recentPresenceScores.isEmpty) return 0.0;
+
+    // 가중 평균 (최근 값에 더 큰 가중치)
+    double weightedSum = 0.0;
+    double totalWeight = 0.0;
+
+    for (int i = 0; i < recentPresenceScores.length; i++) {
+      double weight = (i + 1) / recentPresenceScores.length; // 최근일수록 높은 가중치
+      weightedSum += recentPresenceScores[i] * weight;
+      totalWeight += weight;
+    }
+
+    return weightedSum / totalWeight;
+  }
+
+  /// 사람 존재 평가 (여러 조건 체크)
+  bool _evaluatePresence(double smoothedPresence) {
+    // 1. 기본 임계값 체크
+    bool aboveThreshold = smoothedPresence > adaptiveThreshold;
+
+    // 2. 급격한 변화 감지
+    bool suddenChange = false;
+    if (recentPresenceScores.length >= 2) {
+      double lastScore = recentPresenceScores.last;
+      double prevScore = recentPresenceScores[recentPresenceScores.length - 2];
+      suddenChange = (lastScore - prevScore).abs() > adaptiveThreshold * 2;
+    }
+
+    // 3. 지속적인 사람 존재 체크
+    bool consistentPresence = false;
+    if (recentPresenceScores.length >= 3) {
+      int aboveThresholdCount = recentPresenceScores
+          .where((score) => score > adaptiveThreshold * 0.5)
+          .length;
+      consistentPresence = aboveThresholdCount >= 2;
+    }
+
+    return aboveThreshold || suddenChange || consistentPresence;
+  }
+
+  /// 테두리 상태 업데이트
+  void _updateBorderState() {
+    Color newColor = TablerColors.border;
+    double newGlow = 0.0;
+    bool newPulsing = false;
+
+    // 카메라가 꺼져있으면 테두리 없음
+    if (!isCameraOn) {
+      newColor = Colors.transparent;
+      newGlow = 0.0;
+      newPulsing = false;
+    }
+    // 사람이 감지된 경우 - 초록색 테두리 (서버로 보낼 수 있는 상태)
+    else if (_isPersonDetected) {
+      newColor = TablerColors.success;
+      newGlow = 0.4;
+      newPulsing = true;
+    }
+    // 사람이 감지되지 않은 경우 - 빨간색 테두리 (위험 상태)
+    else if (!_isPersonDetected) {
+      newColor = TablerColors.danger;
+      newGlow = 0.5;
+      newPulsing = true;
+    }
+    // 오류 상태인 경우 - 빨간색 테두리
+    else if (_isErrorState) {
+      newColor = TablerColors.danger;
+      newGlow = 0.5;
+      newPulsing = true;
+    }
+    // 분석 중인 경우 - 보라색 테두리
+    else if (_isAnalyzingState) {
+      newColor = TablerColors.primary;
+      newGlow = 0.3;
+      newPulsing = true;
+    }
+    // 프레임 수집 중인 경우 - 주황색 테두리
+    else if (isCollectingFrames) {
+      newColor = TablerColors.warning;
+      newGlow = 0.3;
+      newPulsing = true;
+    }
+    // 기본 상태 - 회색 테두리
+    else {
+      newColor = TablerColors.border;
+      newGlow = 0.0;
+      newPulsing = false;
+    }
+
+    // 디버깅을 위한 로그 추가
+    print(
+      '테두리 상태 업데이트: 카메라=$isCameraOn, 사람감지=$_isPersonDetected, 색상=$newColor',
+    );
+
+    // 상태가 변경된 경우에만 업데이트
+    if (_dynamicBorderColor != newColor ||
+        _borderGlowIntensity != newGlow ||
+        _isBorderPulsing != newPulsing) {
+      setState(() {
+        _dynamicBorderColor = newColor;
+        _borderGlowIntensity = newGlow;
+        _isBorderPulsing = newPulsing;
+      });
+    }
   }
 
   Future<void> startCamera() async {
@@ -305,13 +634,16 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     setState(() {
       frameStatus = "카메라 중지 중...";
       isCollectingFrames = false;
+      isCameraOn = false; // 즉시 카메라 상태를 false로 설정
     });
 
     print("카메라 중지 요청 수신");
 
+    // 먼저 타이머들을 중지
     stopFrameCollection();
     _stopRealtimePolling();
 
+    // 잔여 프레임 즉시 정리
     if (frameBuffer.isNotEmpty) {
       try {
         print("잔여 프레임 ${frameBuffer.length}개 정리 중...");
@@ -320,6 +652,13 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         print("잔여 프레임 정리 실패: $e");
       }
     }
+
+    // 사람 감지 시스템 상태 초기화
+    previousFrameBytes = null;
+    recentPresenceScores.clear();
+    backgroundNoise.clear();
+    adaptiveThreshold = 0.02;
+    _isPersonDetected = false;
 
     try {
       await cameraController!.dispose();
@@ -332,7 +671,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
     if (mounted) {
       setState(() {
-        isCameraOn = false;
         frameStatus = "";
         hasCollectedFramesOnce = false;
       });
@@ -363,6 +701,19 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     frameBuffer.clear();
 
     _autoFinalized = false;
+
+    // 사람 감지 시스템 상태 초기화
+    previousFrameBytes = null;
+    recentPresenceScores.clear();
+    backgroundNoise.clear();
+    adaptiveThreshold = 0.02;
+
+    // 테두리 시스템 상태 초기화
+    _isPersonDetected = false;
+    _dynamicBorderColor = TablerColors.border;
+    _dynamicBorderWidth = 2.0;
+    _borderGlowIntensity = 0.0;
+    _isBorderPulsing = false;
   }
 
   // --- 실시간 인식 폴링 로직 ---
@@ -753,15 +1104,23 @@ class TranslateScreenWebState extends State<TranslateScreen> {
                 color: _cameraBorderColor,
                 width: _cameraBorderWidth,
               ),
-              boxShadow: _isRecognizingNow
-                  ? [
-                      BoxShadow(
-                        color: _cameraBorderColor.withOpacity(0.3),
-                        blurRadius: 12,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : [],
+              boxShadow: [
+                BoxShadow(
+                  color: _cameraBorderColor.withOpacity(_borderGlowIntensity),
+                  blurRadius: _isBorderPulsing
+                      ? 15 + 5 * sin(_borderPulseValue)
+                      : 12,
+                  spreadRadius: _isBorderPulsing
+                      ? 2 + sin(_borderPulseValue)
+                      : 1,
+                ),
+                if (_isBorderPulsing)
+                  BoxShadow(
+                    color: _cameraBorderColor.withOpacity(0.2),
+                    blurRadius: 25 + 10 * sin(_borderPulseValue),
+                    spreadRadius: 0,
+                  ),
+              ],
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -795,6 +1154,8 @@ class TranslateScreenWebState extends State<TranslateScreen> {
             ),
           ),
         ),
+        SizedBox(height: 16),
+
         SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
