@@ -132,7 +132,7 @@ class LoginScreenState extends State<LoginScreen> {
                           ),
                           SizedBox(height: 16),
                           Text(
-                            '수어 학습 앱',
+                            '수어 술술',
                             style: TextStyle(
                               fontSize: 28,
                               fontWeight: FontWeight.w700,

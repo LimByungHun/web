@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:sign_web/service/token_storage.dart';
 
-const String baseUrl = 'http://10.101.170.142';
+const String baseUrl = 'http://10.101.170.52';
 
 class AnimationApi {
   static Future<List<String>?> loadAnimation(String wordText) async {

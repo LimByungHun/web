@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -8,8 +9,6 @@ import 'package:sign_web/service/translate_api.dart';
 import 'package:sign_web/widget/sidebar_widget.dart';
 import 'package:sign_web/theme/tabler_theme.dart';
 import 'package:sign_web/widget/tablerui_widget.dart';
-import 'package:image/image.dart' as img;
-import 'package:flutter/foundation.dart';
 
 class TranslateScreen extends StatefulWidget {
   const TranslateScreen({super.key});
@@ -35,26 +34,64 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   String? resultJapanese;
   String? resultChinese;
 
-  Future<void>? initVideoPlayer;
-  bool isProcessingFrame = false;
   CameraController? cameraController;
   final List<Uint8List> frameBuffer = [];
   final GlobalKey<AnimationWidgetState> animationKey =
       GlobalKey<AnimationWidgetState>();
   List<Uint8List> decodeFrames = [];
 
+  // 실시간 인식 결과 누적 및 폴링
+
+  Timer? _recognitionPollingTimer;
+  static const int _autoFinalizeWordCount = 3;
+  bool _autoFinalized = false;
+
   // 프레임 상태 표시용 변수 추가
   String frameStatus = '';
   bool isCollectingFrames = false;
   bool hasCollectedFramesOnce = false;
 
+  // 실시간 번역 관련 변수들
+  Timer? realtimeTranslationTimer;
+  bool isRealtimeTranslating = false;
+  List<String> translationHistory = []; // 번역 히스토리
+  DateTime? lastTranslationTime;
+
+  // 존재(움직임) 자동 감지 상태
+  bool isSubjectPresent = false;
+  int? lastFrameSample;
+  int presenceScore = 0;
+  static const int presenceScoreEnter = 60; // 이 값 이상이면 존재로 판정
+  static const int presenceScoreExit = 30; // 이 값 이하이면 부재로 판정
+  static const int presenceScoreInc = 12; // 모션 있을 때 점수 증가량
+  static const int presenceScoreDecay = 6; // 모션 없을 때 점수 감소량
+
   // 프레임 수집 관련 변수들
   Timer? frameCollectionTimer;
-  static const int frameCollectionCount = 45; // 30에서 45로 변경
-  static const int frameCollectionIntervalMs = 100; // 50에서 100으로 늘림
+  static const int frameCollectionCount = 45;
+  static const int frameCollectionIntervalMs = 100;
   static const Duration frameCollectionInterval = Duration(
     milliseconds: frameCollectionIntervalMs,
   );
+
+  // 웹 캡처 중복 호출 방지
+  bool _isCapturingWeb = false;
+
+  // 상태 텍스트 기반 보조 플래그
+  bool get _isErrorState =>
+      frameStatus.contains('오류') || frameStatus.contains('실패');
+  bool get _isAnalyzingState => frameStatus.contains('분석');
+  bool get _isRecognizingNow =>
+      isCameraOn &&
+      (_isAnalyzingState || isCollectingFrames || frameBuffer.isNotEmpty);
+
+  Color get _cameraBorderColor {
+    if (!isCameraOn) return TablerColors.border;
+    if (_isErrorState) return TablerColors.danger;
+    return isSubjectPresent ? TablerColors.success : TablerColors.danger;
+  }
+
+  double get _cameraBorderWidth => _isRecognizingNow ? 3 : 2;
 
   @override
   void initState() {
@@ -63,7 +100,8 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
   @override
   void dispose() {
-    _stopFrameCollection();
+    stopFrameCollection();
+    _stopRealtimePolling();
     stopCamera();
     inputController.dispose();
     super.dispose();
@@ -106,8 +144,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     }
   }
 
-  /// 프레임 수집을 시작합니다.
-  void _startFrameCollection() {
+  void startFrameCollection() {
     frameCollectionTimer?.cancel();
     frameCollectionTimer = Timer.periodic(frameCollectionInterval, (
       timer,
@@ -118,9 +155,15 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       }
 
       try {
+        if (_isCapturingWeb) return; // 중복 캡처 방지
+        _isCapturingWeb = true;
+
         final picture = await cameraController!.takePicture();
         final bytes = await picture.readAsBytes();
         frameBuffer.add(bytes);
+
+        // 존재(움직임) 감지 업데이트
+        _updatePresence(bytes);
 
         if (!hasCollectedFramesOnce) {
           setState(() {
@@ -130,7 +173,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
           });
         }
 
-        // 프레임이 충분히 모이면 전송하고 버퍼만 클리어 (타이머는 계속 실행)
+        // 프레임이 충분히 모이면 전송하고 버퍼만 클리어
         if (frameBuffer.length >= frameCollectionCount) {
           final framesToSend = List<Uint8List>.from(frameBuffer);
           frameBuffer.clear();
@@ -147,14 +190,60 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         }
       } catch (e) {
         print("웹 캡처 오류: $e");
+      } finally {
+        _isCapturingWeb = false;
       }
     });
   }
 
-  /// 프레임 수집을 중지합니다.
-  void _stopFrameCollection() {
+  void stopFrameCollection() {
     frameCollectionTimer?.cancel();
     frameCollectionTimer = null;
+  }
+
+  // 프레임 바이트를 샘플링해 간단한 변화량 계산
+  int _computeSample(Uint8List bytes) {
+    int sum = 0;
+    final int step = bytes.length > 200000 ? 400 : 200; // 대략 샘플 간격
+    for (int i = 0; i < bytes.length; i += step) {
+      sum += bytes[i];
+    }
+    return sum;
+  }
+
+  void _updatePresence(Uint8List bytes) {
+    final int sample = _computeSample(bytes);
+
+    if (lastFrameSample != null) {
+      final int diff = (sample - lastFrameSample!).abs();
+      // 프레임당 샘플 개수에 비례한 간단 임계값
+      final int step = bytes.length > 200000 ? 400 : 200;
+      final int samples = (bytes.length + step - 1) ~/ step;
+      final int dynamicThreshold = samples * 8; // 기본 민감도
+
+      final bool hasMotion = diff > dynamicThreshold;
+      if (hasMotion) {
+        presenceScore = (presenceScore + presenceScoreInc).clamp(0, 100);
+      } else {
+        presenceScore = (presenceScore - presenceScoreDecay).clamp(0, 100);
+      }
+
+      final bool enter = presenceScore >= presenceScoreEnter;
+      final bool exit = presenceScore <= presenceScoreExit;
+
+      bool changed = false;
+      if (enter && !isSubjectPresent) {
+        isSubjectPresent = true;
+        changed = true;
+      } else if (exit && isSubjectPresent) {
+        isSubjectPresent = false;
+        changed = true;
+      }
+
+      if (changed && mounted) setState(() {});
+    }
+
+    lastFrameSample = sample;
   }
 
   Future<void> startCamera() async {
@@ -177,14 +266,14 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
       await cameraController!.initialize();
 
-      if (kIsWeb) {
-        _startFrameCollection();
-      } else {
-        await cameraController!.startImageStream(onFrameAvailable);
+      startFrameCollection();
+      if (isSignToKorean) {
+        _startRealtimePolling();
       }
 
       setState(() {
         isCameraOn = true;
+        _autoFinalized = false;
         if (!hasCollectedFramesOnce) {
           frameStatus = "카메라 준비 완료!\n수어 동작을 시작하세요";
         } else {
@@ -220,19 +309,8 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
     print("카메라 중지 요청 수신");
 
-    // 프레임 수집 타이머 중지
-    _stopFrameCollection();
-
-    try {
-      // 스트림 중지 (예외 없이 진행되도록)
-      if (cameraController!.value.isStreamingImages) {
-        print("이미지 스트림 중지 시도...");
-        await cameraController!.stopImageStream();
-        print("이미지 스트림 중지 완료");
-      }
-    } catch (e) {
-      print("이미지 스트림 중지 오류: $e");
-    }
+    stopFrameCollection();
+    _stopRealtimePolling();
 
     if (frameBuffer.isNotEmpty) {
       try {
@@ -244,7 +322,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     }
 
     try {
-      // 컨트롤러 dispose
       await cameraController!.dispose();
       print("컨트롤러 dispose 완료");
     } catch (e) {
@@ -259,41 +336,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         frameStatus = "";
         hasCollectedFramesOnce = false;
       });
-    }
-  }
-
-  void onFrameAvailable(CameraImage image) async {
-    if (isProcessingFrame) return;
-    isProcessingFrame = true;
-
-    try {
-      final jpeg = await convertYUV420toJPEG(image);
-      if (jpeg != null) {
-        frameBuffer.add(jpeg);
-
-        // 프레임 수집 상태 업데이트
-        if (!hasCollectedFramesOnce) {
-          setState(() {
-            isCollectingFrames = true;
-            frameStatus =
-                "프레임 수집 중... (${frameBuffer.length}/$frameCollectionCount)\n지금 움직이세요!";
-          });
-        }
-
-        if (frameBuffer.length > frameCollectionCount) {
-          await sendFrames(List.from(frameBuffer));
-          frameBuffer.clear();
-          if (!hasCollectedFramesOnce) {
-            hasCollectedFramesOnce = true;
-          }
-        }
-      } else {
-        print("JPEG 변환 실패: convertYUV420toJPEG에서 null 반환");
-      }
-    } catch (e) {
-      print("프레임 처리 오류 (YUV->JPEG): $e");
-    } finally {
-      isProcessingFrame = false;
     }
   }
 
@@ -319,91 +361,52 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     isCollectingFrames = false;
     hasCollectedFramesOnce = false;
     frameBuffer.clear();
+
+    _autoFinalized = false;
   }
 
-  Future<Uint8List?> convertYUV420toJPEG(CameraImage image) async {
-    try {
-      final int width = image.width;
-      final int height = image.height;
+  // --- 실시간 인식 폴링 로직 ---
+  void _startRealtimePolling() {
+    _recognitionPollingTimer?.cancel();
+    _recognitionPollingTimer = Timer.periodic(const Duration(seconds: 5), (
+      timer,
+    ) async {
+      if (!mounted || !isCameraOn || !isSignToKorean) return;
+      try {
+        final latest = await TranslateApi.translateLatest();
+        if (latest == null) return;
 
-      final planeY = image.planes[0];
-      final planeU = image.planes[1];
-      final planeV = image.planes[2];
-
-      final Uint8List bytesY = planeY.bytes;
-      final Uint8List bytesU = planeU.bytes;
-      final Uint8List bytesV = planeV.bytes;
-
-      final int yStride = planeY.bytesPerRow;
-      final int uStride = planeU.bytesPerRow;
-      final int pixelStrideU = planeU.bytesPerPixel ?? 1;
-
-      String format = 'UNKNOWN';
-
-      final int yHeight = height;
-      final int yWidth = width;
-
-      final int uWidthGuess = uStride ~/ (planeU.bytesPerPixel ?? 1);
-      final int uHeightGuess = planeU.bytes.length ~/ uStride;
-
-      if ((uWidthGuess - yWidth).abs() <= 32 &&
-          (uHeightGuess - yHeight).abs() <= 2) {
-        format = 'YUV444';
-      } else if ((uWidthGuess - yWidth ~/ 2).abs() <= 32 &&
-          (uHeightGuess - yHeight).abs() <= 2) {
-        format = 'YUV422';
-      } else if ((uWidthGuess - yWidth ~/ 2).abs() <= 32 &&
-          (uHeightGuess - yHeight ~/ 2).abs() <= 2) {
-        format = 'YUV420';
-      } else {
-        print("Unknown YUV format");
-        print(
-          "→ uStride: $uStride, uHeightGuess: $uHeightGuess, pixelStrideU: $pixelStrideU",
-        );
-        return null;
-      }
-
-      final img.Image output = img.Image(width: width, height: height);
-
-      for (int y = 0; y < height; y++) {
-        final int yRow = y * yStride;
-        final int uvY = (format == 'YUV420')
-            ? y ~/ 2
-            : (format == 'YUV422')
-            ? y
-            : y;
-
-        for (int x = 0; x < width; x++) {
-          final int yIndex = yRow + x;
-
-          final int uvX = (format == 'YUV444') ? x : x ~/ 2;
-          final int uvIndex = uvY * uStride + uvX * pixelStrideU;
-
-          final int Y = bytesY[yIndex];
-          final int U = bytesU[uvIndex] - 128;
-          final int V = bytesV[uvIndex] - 128;
-
-          // TTA 기반 변환 공식
-          int R = (Y + 0.956 * U + 0.621 * V).round();
-          int G = (Y - 0.272 * U - 0.647 * V).round();
-          int B = (Y + 1.106 * U + 1.703 * V).round();
-
-          output.setPixelRgb(
-            x,
-            y,
-            R.clamp(0, 255),
-            G.clamp(0, 255),
-            B.clamp(0, 255),
-          );
+        String? korean;
+        final k = latest['korean'];
+        if (k is List) {
+          korean = k.join(' ');
+        } else if (k is String) {
+          korean = k.trim();
         }
-      }
 
-      final encoded = img.encodeJpg(output, quality: 80);
-      return Uint8List.fromList(encoded);
-    } catch (e) {
-      debugPrint("변환 오류: $e");
-      return null;
-    }
+        if (korean == null || korean.isEmpty) return;
+
+        setState(() {
+          resultKorean = korean;
+        });
+
+        // 자동 완료 조건 체크 (단어 개수 기준)
+        final wordCount = korean
+            .split(RegExp(r"\s+"))
+            .where((e) => e.trim().isNotEmpty)
+            .length;
+        if (!_autoFinalized && wordCount >= _autoFinalizeWordCount) {
+          _autoFinalized = true;
+          // 기존 버튼 로직 재사용
+          await handleTranslate();
+        }
+      } catch (_) {}
+    });
+  }
+
+  void _stopRealtimePolling() {
+    _recognitionPollingTimer?.cancel();
+    _recognitionPollingTimer = null;
   }
 
   Future<void> handleTranslate() async {
@@ -560,7 +563,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
                     SizedBox(height: 24),
                     Expanded(child: buildTranslationArea()),
                     SizedBox(height: 24),
-                    buildTranslateButton(),
+                    if (!isSignToKorean) buildTranslateButton(),
                   ],
                 ),
               ),
@@ -721,7 +724,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
               ),
               SizedBox(width: 8),
               Text(
-                isSignToKorean ? '수어 입력' : '텍스트 입력',
+                isSignToKorean ? '수어 동작' : '텍스트 입력',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -741,34 +744,55 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     return Column(
       children: [
         Expanded(
-          child: Container(
+          child: AnimatedContainer(
+            duration: Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
             decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: _cameraBorderColor,
+                width: _cameraBorderWidth,
+              ),
+              boxShadow: _isRecognizingNow
+                  ? [
+                      BoxShadow(
+                        color: _cameraBorderColor.withOpacity(0.3),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : [],
             ),
-            child: isCameraOn && cameraController?.value.isInitialized == true
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: CameraPreview(cameraController!),
-                  )
-                : Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.videocam_off,
-                          size: 48,
-                          color: Colors.white54,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                decoration: BoxDecoration(color: Colors.black),
+                child:
+                    isCameraOn && cameraController?.value.isInitialized == true
+                    ? CameraPreview(cameraController!)
+                    : Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.videocam_off,
+                              size: 48,
+                              color: Colors.white54,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              '카메라를 켜서\n수어 동작을 실행하십시오.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
                         ),
-                        SizedBox(height: 16),
-                        Text(
-                          '카메라를 켜서\n수어를 입력하세요',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 16, color: Colors.white70),
-                        ),
-                      ],
-                    ),
-                  ),
+                      ),
+              ),
+            ),
           ),
         ),
         SizedBox(height: 16),
@@ -833,7 +857,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
             children: [
               Icon(
                 isSignToKorean ? Icons.text_fields : Icons.videocam,
-                color: TablerColors.textSecondary,
+                color: const Color.fromARGB(255, 188, 190, 192),
                 size: 20,
               ),
               SizedBox(width: 8),
@@ -1035,7 +1059,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
           Icon(Icons.translate, size: 48, color: TablerColors.textSecondary),
           SizedBox(height: 16),
           Text(
-            '번역 결과가 여기에\n표시됩니다',
+            '결과가 여기에\n표시됩니다',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 16, color: TablerColors.textSecondary),
           ),
@@ -1050,7 +1074,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         width: 200,
         height: 48,
         child: TablerButton(
-          text: isTranslating ? '번역 중...' : '번역하기',
+          text: isTranslating ? '확인 중...' : '결과 확인',
           icon: isTranslating ? null : Icons.translate,
           onPressed: isTranslating ? null : handleTranslate,
         ),

@@ -150,11 +150,6 @@ class HomeScreenState extends State<HomeScreen> {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
-        if (courseModel.selectedCourse != null)
-          Text(
-            '${courseModel.currentDay}/${courseModel.totalDays} 단계',
-            style: TextStyle(fontSize: 14, color: TablerColors.textSecondary),
-          ),
       ],
     );
   }
@@ -248,6 +243,7 @@ class HomeScreenState extends State<HomeScreen> {
                         totalDays: courseModel.totalDays,
                         currentDay: courseModel.currentDay,
                         steps: courseModel.steps,
+                        enableNavigation: true,
                       ),
                       SizedBox(height: 16),
                       LinearProgressIndicator(
@@ -392,6 +388,7 @@ class HomeScreenState extends State<HomeScreen> {
                         totalDays: courseModel.totalDays,
                         currentDay: courseModel.currentDay,
                         steps: courseModel.steps,
+                        enableNavigation: true,
                       ),
                       SizedBox(height: 12),
                       // 진행률과 통계를 가로로 배치

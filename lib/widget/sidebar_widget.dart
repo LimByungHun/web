@@ -47,7 +47,7 @@ class SidebarState extends State<Sidebar> {
     SidebarItem(
       icon: Icons.g_translate_outlined,
       activeIcon: Icons.g_translate,
-      label: '번역',
+      label: '장문 연습',
     ),
     SidebarItem(
       icon: Icons.menu_book_outlined,
@@ -99,7 +99,7 @@ class SidebarState extends State<Sidebar> {
                 ),
                 SizedBox(width: 12),
                 Text(
-                  '수어 학습',
+                  '수어 술술',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
