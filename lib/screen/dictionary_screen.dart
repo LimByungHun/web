@@ -216,7 +216,7 @@ class DictionaryState extends State<Dictionary> {
                               child: TextField(
                                 controller: searchController,
                                 decoration: InputDecoration(
-                                  hintText: '단어 검색',
+                                  hintText: '사전 검색',
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(24),
                                   ),
@@ -330,8 +330,6 @@ class DictionaryState extends State<Dictionary> {
                                                         CircularProgressIndicator(),
                                                   ),
                                                 ),
-                                          SizedBox(height: 16),
-                                          Text('수화 설명 출력 예정'),
                                         ],
                                       ),
                                     ),

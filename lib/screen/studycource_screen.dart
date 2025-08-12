@@ -111,9 +111,9 @@ class StudycourceScreenState extends State<StudycourceScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildHeader(),
+                        buildHeader(),
                         SizedBox(height: 24),
-                        Expanded(child: _buildCourseList()),
+                        Expanded(child: buildCourseList()),
                       ],
                     ),
                   ),
@@ -126,7 +126,7 @@ class StudycourceScreenState extends State<StudycourceScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget buildHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -174,7 +174,7 @@ class StudycourceScreenState extends State<StudycourceScreen> {
     );
   }
 
-  Widget _buildCourseList() {
+  Widget buildCourseList() {
     if (isLoading) {
       return Center(
         child: Column(
@@ -226,143 +226,168 @@ class StudycourceScreenState extends State<StudycourceScreen> {
     }
 
     return ListView.separated(
-      itemCount: studyList.length,
+      itemCount: studyList.length + 1,
       separatorBuilder: (context, index) => SizedBox(height: 12),
       itemBuilder: (context, index) {
-        final course = studyList[index];
-        final isSelected = selectedCourseIndex == index;
-        final courseName = course['Study_Course'] ?? '알 수 없는 코스';
+        // 실제 코스 아이템 렌더링
+        if (index < studyList.length) {
+          final course = studyList[index];
+          final isSelected = selectedCourseIndex == index;
+          final courseName = course['Study_Course'] ?? '알 수 없는 코스';
 
-        return AnimatedContainer(
-          duration: Duration(milliseconds: 200),
-          child: TablerCard(
-            margin: EdgeInsets.zero,
-            padding: EdgeInsets.zero,
-            child: InkWell(
-              onTap: () {
-                setState(() {
-                  selectedCourseIndex = isSelected ? null : index;
-                });
-              },
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? TablerColors.primary
-                                : TablerColors.primary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
+          return AnimatedContainer(
+            duration: Duration(milliseconds: 200),
+            child: TablerCard(
+              margin: EdgeInsets.zero,
+              padding: EdgeInsets.zero,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    selectedCourseIndex = isSelected ? null : index;
+                  });
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? TablerColors.primary
+                                  : TablerColors.primary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.school_outlined,
+                              color: isSelected
+                                  ? Colors.white
+                                  : TablerColors.primary,
+                              size: 24,
+                            ),
                           ),
-                          child: Icon(
-                            Icons.school_outlined,
-                            color: isSelected
-                                ? Colors.white
-                                : TablerColors.primary,
-                            size: 24,
-                          ),
-                        ),
-                        SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                courseName,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: TablerColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          isSelected
-                              ? Icons.keyboard_arrow_up
-                              : Icons.keyboard_arrow_down,
-                          color: TablerColors.textSecondary,
-                        ),
-                      ],
-                    ),
-                    if (isSelected) ...[
-                      SizedBox(height: 20),
-                      Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: TablerColors.info.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: TablerColors.info.withOpacity(0.2),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                          SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(
-                                  Icons.info_outline,
-                                  size: 18,
-                                  color: TablerColors.info,
-                                ),
-                                SizedBox(width: 8),
                                 Text(
-                                  '$courseName 코스 정보',
+                                  courseName,
                                   style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: TablerColors.info,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: TablerColors.textPrimary,
                                   ),
                                 ),
                               ],
                             ),
-                            SizedBox(height: 8),
-                            Text(
-                              '이 코스를 선택하면 단계별로 수어 학습을 진행할 수 있습니다.',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: TablerColors.textPrimary,
-                              ),
-                            ),
-                            SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                TablerButton(
-                                  text: '취소',
-                                  outline: true,
-                                  small: true,
-                                  onPressed: () {
-                                    setState(() {
-                                      selectedCourseIndex = null;
-                                    });
-                                  },
-                                ),
-                                SizedBox(width: 12),
-                                TablerButton(
-                                  text: '학습 시작',
-                                  small: true,
-                                  icon: Icons.play_arrow,
-                                  onPressed: () => selectCourse(index),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                          ),
+                          Icon(
+                            isSelected
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                            color: TablerColors.textSecondary,
+                          ),
+                        ],
                       ),
+                      if (isSelected) ...[
+                        SizedBox(height: 20),
+                        Container(
+                          padding: EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: TablerColors.info.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: TablerColors.info.withOpacity(0.2),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 18,
+                                    color: TablerColors.info,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    '$courseName 코스 정보',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: TablerColors.info,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                '이 코스를 선택하면 단계별로 수어 학습을 진행할 수 있습니다.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: TablerColors.textPrimary,
+                                ),
+                              ),
+                              SizedBox(height: 16),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TablerButton(
+                                    text: '취소',
+                                    outline: true,
+                                    small: true,
+                                    onPressed: () {
+                                      setState(() {
+                                        selectedCourseIndex = null;
+                                      });
+                                    },
+                                  ),
+                                  SizedBox(width: 12),
+                                  TablerButton(
+                                    text: '학습 시작',
+                                    small: true,
+                                    icon: Icons.play_arrow,
+                                    onPressed: () => selectCourse(index),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
+            ),
+          );
+        }
+
+        // 추가 예정 안내 카드
+        return Container(
+          margin: EdgeInsets.only(top: 12),
+          child: TablerCard(
+            margin: EdgeInsets.zero,
+            padding: EdgeInsets.all(20),
+            child: Column(
+              children: [
+                Text(
+                  '더 많은 학습 코스가 추가될 예정입니다',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: TablerColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
           ),
         );

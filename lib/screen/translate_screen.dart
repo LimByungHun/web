@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:sign_web/widget/animation_widget.dart';
 import 'package:sign_web/service/translate_api.dart';
+import 'package:sign_web/service/mediapipe_service.dart';
 import 'package:sign_web/widget/sidebar_widget.dart';
 import 'package:sign_web/theme/tabler_theme.dart';
 import 'package:sign_web/widget/tablerui_widget.dart';
@@ -57,7 +58,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   List<String> translationHistory = []; // 번역 히스토리
   DateTime? lastTranslationTime;
 
-  // 웹 기반 사람 감지 시스템
+  // 웹 기반 사람 감지 시스템 (기존 픽셀 차이 방식)
   Uint8List? previousFrameBytes;
   List<double> recentPresenceScores = []; // 최근 사람 존재 점수들
   double presenceThreshold = 0.02; // 사람 감지 임계값
@@ -95,6 +96,13 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   double _borderPulseValue = 0.0;
   bool _isBorderPulsing = false;
 
+  // MediaPipe 관련 변수들 추가
+  DetectionStatus _detectionStatus = DetectionStatus.none;
+  List<HandLandmarks> _detectedHands = [];
+  PoseLandmarks? _detectedPose;
+  bool _useMediaPipe = true; // MediaPipe 사용 여부
+  bool _mediaPipeInitialized = false;
+
   // 상태 텍스트 기반 보조 플래그
   bool get _isErrorState =>
       frameStatus.contains('오류') || frameStatus.contains('실패');
@@ -112,6 +120,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   void initState() {
     super.initState();
     _startBorderAnimation();
+    _initializeMediaPipe();
   }
 
   @override
@@ -126,6 +135,95 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     previousFrameBytes = null;
 
     super.dispose();
+  }
+
+  void _initializeMediaPipe() {
+    try {
+      // 손 감지 콜백 설정
+      MediaPipeService.instance.setHandsCallback((hands) {
+        if (mounted) {
+          setState(() {
+            _detectedHands = hands;
+            _updateDetectionStatus();
+          });
+        }
+      });
+
+      // 포즈 감지 콜백 설정
+      MediaPipeService.instance.setPoseCallback((pose) {
+        if (mounted) {
+          setState(() {
+            _detectedPose = pose;
+            _updateDetectionStatus();
+          });
+        }
+      });
+
+      setState(() => _mediaPipeInitialized = true);
+      print("MediaPipe 초기화 완료");
+    } catch (e) {
+      print('MediaPipe 초기화 실패: $e');
+      setState(() => _useMediaPipe = false);
+    }
+  }
+
+  void _updateDetectionStatus() {
+    if (!_useMediaPipe) return;
+
+    final hasHands = _detectedHands.isNotEmpty;
+    final hasPose = _detectedPose != null;
+
+    if (hasHands && hasPose) {
+      _detectionStatus = DetectionStatus.both;
+    } else if (hasHands) {
+      _detectionStatus = DetectionStatus.hands;
+    } else if (hasPose) {
+      _detectionStatus = DetectionStatus.pose;
+    } else {
+      _detectionStatus = DetectionStatus.none;
+    }
+
+    // 프레임 상태 업데이트
+    _updateFrameStatusWithMediaPipe();
+  }
+
+  void _updateFrameStatusWithMediaPipe() {
+    if (!_useMediaPipe || !_mediaPipeInitialized) {
+      // 기존 로직 사용
+      _updateBorderState();
+      return;
+    }
+
+    String status = '';
+    bool personDetected = false;
+
+    switch (_detectionStatus) {
+      case DetectionStatus.both:
+        status = "수어 동작을 시작하세요";
+        personDetected = true;
+        break;
+      case DetectionStatus.hands:
+        status = "손이 감지되었습니다. 상체도 포함해주세요";
+        personDetected = true;
+        break;
+      case DetectionStatus.pose:
+        status = "상체가 감지되었습니다. 손도 보여주세요";
+        personDetected = false;
+        break;
+      case DetectionStatus.none:
+        status = "카메라에 사람이 보이지 않습니다";
+        personDetected = false;
+        break;
+    }
+
+    if (!hasCollectedFramesOnce) {
+      setState(() {
+        frameStatus = status;
+        _isPersonDetected = personDetected;
+      });
+    }
+
+    _updateBorderState();
   }
 
   Future<void> sendFrames(List<Uint8List> frames) async {
@@ -207,7 +305,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
           return;
         }
 
-        // 웹 기반 실시간 프레임 분석 및 테두리 업데이트
+        // 프레임 분석 및 테두리 업데이트
         await _analyzeFrameAndUpdateBorder(bytes);
 
         // 사람이 감지되었을 때만 프레임 수집
@@ -280,17 +378,30 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   /// 웹 기반 실시간 프레임 분석 및 테두리 업데이트
   Future<void> _analyzeFrameAndUpdateBorder(Uint8List frameBytes) async {
     try {
-      // 사람 감지
-      await _detectPerson(frameBytes);
-
-      // 테두리 상태 업데이트
-      _updateBorderState();
+      if (_useMediaPipe && _mediaPipeInitialized) {
+        // MediaPipe로 분석
+        MediaPipeService.instance.detectFromFrame(
+          frameBytes,
+          640, // 예상 너비
+          480, // 예상 높이
+        );
+      } else {
+        // 기존 픽셀 차이 기반 분석
+        await _detectPerson(frameBytes);
+        _updateBorderState();
+      }
     } catch (e) {
       print('프레임 분석 오류: $e');
+      // MediaPipe 실패시 기존 방식으로 폴백
+      if (_useMediaPipe) {
+        setState(() => _useMediaPipe = false);
+        await _detectPerson(frameBytes);
+        _updateBorderState();
+      }
     }
   }
 
-  /// 고급 사람 감지 (웹 최적화)
+  /// 고급 사람 감지 (웹 최적화) - 기존 픽셀 차이 방식
   Future<void> _detectPerson(Uint8List frameBytes) async {
     try {
       if (previousFrameBytes == null) {
@@ -314,11 +425,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
       // 사람 감지 (여러 조건 체크)
       bool hasPerson = _evaluatePresence(smoothedPresence);
-
-      // 디버깅을 위한 로그 추가
-      print(
-        '사람 감지 결과: 점수=$smoothedPresence, 임계값=$adaptiveThreshold, 감지됨=$hasPerson',
-      );
 
       // 프레임 수집 상태와 연동하여 실제 인식 가능한 상태 판단
       bool canRecognize =
@@ -558,11 +664,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       newPulsing = false;
     }
 
-    // 디버깅을 위한 로그 추가
-    print(
-      '테두리 상태 업데이트: 카메라=$isCameraOn, 사람감지=$_isPersonDetected, 색상=$newColor',
-    );
-
     // 상태가 변경된 경우에만 업데이트
     if (_dynamicBorderColor != newColor ||
         _borderGlowIntensity != newGlow ||
@@ -660,6 +761,11 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     adaptiveThreshold = 0.02;
     _isPersonDetected = false;
 
+    // MediaPipe 상태 초기화
+    _detectedHands.clear();
+    _detectedPose = null;
+    _detectionStatus = DetectionStatus.none;
+
     try {
       await cameraController!.dispose();
       print("컨트롤러 dispose 완료");
@@ -714,6 +820,11 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     _dynamicBorderWidth = 2.0;
     _borderGlowIntensity = 0.0;
     _isBorderPulsing = false;
+
+    // MediaPipe 상태 초기화
+    _detectedHands.clear();
+    _detectedPose = null;
+    _detectionStatus = DetectionStatus.none;
   }
 
   // --- 실시간 인식 폴링 로직 ---
@@ -893,6 +1004,42 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       msg: message,
       backgroundColor: TablerColors.danger,
       textColor: Colors.white,
+    );
+  }
+
+  // 디버그용 감지 정보 표시 위젯
+  Widget _buildDetectionInfo() {
+    if (!_useMediaPipe || !_mediaPipeInitialized) return SizedBox.shrink();
+
+    return Container(
+      margin: EdgeInsets.all(8),
+      padding: EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'MediaPipe 감지 상태',
+            style: TextStyle(color: Colors.white, fontSize: 12),
+          ),
+          Text(
+            '손: ${_detectedHands.length}개',
+            style: TextStyle(color: Colors.white, fontSize: 10),
+          ),
+          Text(
+            '포즈: ${_detectedPose != null ? "감지됨" : "미감지"}',
+            style: TextStyle(color: Colors.white, fontSize: 10),
+          ),
+          Text(
+            '상태: ${_detectionStatus.name}',
+            style: TextStyle(color: Colors.white, fontSize: 10),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1095,66 +1242,132 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     return Column(
       children: [
         Expanded(
-          child: AnimatedContainer(
-            duration: Duration(milliseconds: 250),
-            curve: Curves.easeInOut,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: _cameraBorderColor,
-                width: _cameraBorderWidth,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _cameraBorderColor.withOpacity(_borderGlowIntensity),
-                  blurRadius: _isBorderPulsing
-                      ? 15 + 5 * sin(_borderPulseValue)
-                      : 12,
-                  spreadRadius: _isBorderPulsing
-                      ? 2 + sin(_borderPulseValue)
-                      : 1,
-                ),
-                if (_isBorderPulsing)
-                  BoxShadow(
-                    color: _cameraBorderColor.withOpacity(0.2),
-                    blurRadius: 25 + 10 * sin(_borderPulseValue),
-                    spreadRadius: 0,
+          child: Stack(
+            children: [
+              AnimatedContainer(
+                duration: Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: _cameraBorderColor,
+                    width: _cameraBorderWidth,
                   ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                decoration: BoxDecoration(color: Colors.black),
-                child:
-                    isCameraOn && cameraController?.value.isInitialized == true
-                    ? CameraPreview(cameraController!)
-                    : Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.videocam_off,
-                              size: 48,
-                              color: Colors.white54,
-                            ),
-                            SizedBox(height: 16),
-                            Text(
-                              '카메라를 켜서\n수어 동작을 실행하십시오.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ],
-                        ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _cameraBorderColor.withOpacity(
+                        _borderGlowIntensity,
                       ),
+                      blurRadius: _isBorderPulsing
+                          ? 15 + 5 * sin(_borderPulseValue)
+                          : 12,
+                      spreadRadius: _isBorderPulsing
+                          ? 2 + sin(_borderPulseValue)
+                          : 1,
+                    ),
+                    if (_isBorderPulsing)
+                      BoxShadow(
+                        color: _cameraBorderColor.withOpacity(0.2),
+                        blurRadius: 25 + 10 * sin(_borderPulseValue),
+                        spreadRadius: 0,
+                      ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    decoration: BoxDecoration(color: Colors.black),
+                    child:
+                        isCameraOn &&
+                            cameraController?.value.isInitialized == true
+                        ? Stack(
+                            children: [
+                              CameraPreview(cameraController!),
+                              // MediaPipe 감지 정보 오버레이
+                              if (_useMediaPipe && _mediaPipeInitialized)
+                                Positioned(
+                                  top: 8,
+                                  left: 8,
+                                  child: _buildDetectionInfo(),
+                                ),
+                              // 프레임 상태 표시
+                              if (frameStatus.isNotEmpty)
+                                Positioned(
+                                  bottom: 8,
+                                  left: 8,
+                                  right: 8,
+                                  child: Container(
+                                    padding: EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.7),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      frameStatus,
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          )
+                        : Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.videocam_off,
+                                  size: 48,
+                                  color: Colors.white54,
+                                ),
+                                SizedBox(height: 16),
+                                Text(
+                                  '카메라를 켜서\n수어 동작을 실행하십시오.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
         SizedBox(height: 16),
+
+        // MediaPipe 토글 스위치
+        if (_mediaPipeInitialized)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '고급 감지',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: TablerColors.textSecondary,
+                ),
+              ),
+              SizedBox(width: 8),
+              Switch(
+                value: _useMediaPipe,
+                onChanged: (value) {
+                  setState(() => _useMediaPipe = value);
+                  if (value && !_mediaPipeInitialized) {
+                    _initializeMediaPipe();
+                  }
+                },
+                activeColor: TablerColors.primary,
+              ),
+            ],
+          ),
 
         SizedBox(height: 16),
         SizedBox(
@@ -1243,7 +1456,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
   Widget buildTextResults() {
     // 프레임 수집/전송 상태가 있으면 표시
-    if (frameStatus.isNotEmpty) {
+    if (frameStatus.isNotEmpty && !isSignToKorean) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1253,9 +1466,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
               size: 48,
               color: TablerColors.textSecondary,
             ),
-
             SizedBox(height: 16),
-
             Text(
               frameStatus,
               textAlign: TextAlign.center,
