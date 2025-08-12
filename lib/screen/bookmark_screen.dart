@@ -326,8 +326,6 @@ class _BookmarkState extends State<Bookmark> {
                                                         CircularProgressIndicator(),
                                                   ),
                                                 ),
-                                          SizedBox(height: 16),
-                                          Text('수화 설명 출력 예정'),
                                         ],
                                       ),
                                     ),
