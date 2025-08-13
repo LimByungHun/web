@@ -8,7 +8,7 @@ import 'package:sign_web/screen/home_screen.dart';
 import 'package:sign_web/screen/insertuser_screen.dart';
 import 'package:sign_web/screen/login_screen.dart';
 import 'package:sign_web/screen/pwrecovery_screen.dart';
-import 'package:sign_web/screen/studycource_screen.dart';
+import 'package:sign_web/screen/studycourse_screen.dart';
 import 'package:sign_web/screen/translate_screen.dart';
 import 'package:sign_web/screen/study_screen.dart';
 import 'package:sign_web/screen/studycalendar_screen.dart';
@@ -82,7 +82,7 @@ GoRouter createRouter() {
 
       GoRoute(
         path: '/course',
-        builder: (context, state) => const StudycourceScreen(),
+        builder: (context, state) => const StudycourseScreen(),
       ),
 
       GoRoute(

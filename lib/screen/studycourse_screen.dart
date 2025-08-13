@@ -8,14 +8,14 @@ import 'package:sign_web/theme/tabler_theme.dart';
 import 'package:sign_web/widget/sidebar_widget.dart';
 import 'package:sign_web/widget/tablerui_widget.dart';
 
-class StudycourceScreen extends StatefulWidget {
-  const StudycourceScreen({super.key});
+class StudycourseScreen extends StatefulWidget {
+  const StudycourseScreen({super.key});
 
   @override
-  State<StudycourceScreen> createState() => StudycourceScreenState();
+  State<StudycourseScreen> createState() => StudycourseScreenState();
 }
 
-class StudycourceScreenState extends State<StudycourceScreen> {
+class StudycourseScreenState extends State<StudycourseScreen> {
   List<Map<String, dynamic>> studyList = [];
   int? selectedCourseIndex;
   bool isLoading = true;

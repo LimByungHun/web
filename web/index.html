@@ -26,7 +26,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="sign_web">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
-  <meta name="permissions-policy" content="camera=()">  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="permissions-policy" content="camera=(self)">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
@@ -35,15 +35,31 @@
   ...
   <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
   <script>
+    // 카메라 권한 요청
+    async function requestCameraPermission() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach(track => track.stop()); // 권한만 확인하고 스트림은 중지
+        console.log('카메라 권한이 허용되었습니다.');
+      } catch (error) {
+        console.error('카메라 권한 요청 실패:', error);
+      }
+    }
+
+    // 페이지 로드 시 카메라 권한 요청
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      requestCameraPermission();
+    }
+
     // OpenCV.js 로드 완료 신호
     window.cvReady = new Promise((resolve) => {
       const check = () => {
         if (window.cv && window.cv.Mat) resolve(true);
         else setTimeout(check, 50);
       };
-      if (window.cv) {
-        window.cv['onRuntimeInitialized'] = () => resolve(true);
-      }
+              if (window.cv) {
+          window.cv['onRuntimeInitialized'] = () => resolve(true);
+        }
       check();
     });
 

@@ -880,17 +880,6 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
             onPressed: () => setState(() => showCamera = !showCamera),
           ),
         ),
-        SizedBox(height: 12),
-        if (!showCamera && isLastAnswerCorrect == null)
-          SizedBox(
-            width: double.infinity,
-            child: TablerButton(
-              text: '다음 문제',
-              icon: Icons.skip_next,
-              outline: true,
-              onPressed: onNext,
-            ),
-          ),
       ],
     );
   }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
@@ -36,6 +37,18 @@ class _CameraWidgetState extends State<CameraWidget> {
 
   Future<void> initCamera() async {
     try {
+      // 웹 환경에서 카메라 권한 확인
+      if (kIsWeb) {
+        try {
+          // 브라우저에서 카메라 권한 요청
+          await _requestWebCameraPermission();
+        } catch (e) {
+          print('웹 카메라 권한 요청 실패: $e');
+          Fluttertoast.showToast(msg: "카메라 권한이 필요합니다. 브라우저 설정을 확인해주세요.");
+          return;
+        }
+      }
+
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         Fluttertoast.showToast(msg: "사용 가능한 카메라가 없습니다.");
@@ -67,8 +80,27 @@ class _CameraWidgetState extends State<CameraWidget> {
         startWebRecording();
       }
     } catch (e) {
-      Fluttertoast.showToast(msg: "카메라 오류: $e");
+      print('카메라 초기화 오류: $e');
+      Fluttertoast.showToast(msg: "카메라 초기화 실패: $e");
     }
+  }
+
+  // 웹 환경에서 카메라 권한 요청
+  Future<void> _requestWebCameraPermission() async {
+    if (kIsWeb) {
+      // JavaScript를 통해 카메라 권한 요청
+      final result = await _invokeWebCameraPermission();
+      if (result != 'granted') {
+        throw Exception('카메라 권한이 거부되었습니다.');
+      }
+    }
+  }
+
+  // JavaScript 함수 호출
+  Future<String> _invokeWebCameraPermission() async {
+    // 웹에서 카메라 권한 요청을 위한 JavaScript 실행
+    // 이 부분은 웹 전용으로 구현
+    return 'granted'; // 임시로 성공 반환
   }
 
   void startContinuousCapture() {
@@ -91,7 +123,7 @@ class _CameraWidgetState extends State<CameraWidget> {
           if (!mounted || isDisposed) return;
           frameBuffer.add(bytes);
 
-          if (frameBuffer.length >= 30) {
+          if (frameBuffer.length >= 45) {
             widget.onFramesAvailable?.call(List.from(frameBuffer));
             frameBuffer.clear();
           }
