@@ -156,7 +156,7 @@ class LoginScreenState extends State<LoginScreen> {
                       controller: idController,
                       label: '아이디',
                       hintText: '아이디를 입력하세요',
-                      prefixIcon: Icons.person_outline,
+                      prefixIcon: IconData(0xe491, fontFamily: 'MaterialIcons'),
                     ),
                     SizedBox(height: 16),
                     buildTextField(

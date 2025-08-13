@@ -17,15 +17,23 @@ class TranslateScreen extends StatefulWidget {
 }
 
 class TranslateScreenWebState extends State<TranslateScreen> {
-  bool isSignToKorean = true; // true: 수어 -> 한글 | false 한글 -> 수어
+  // 기본 상태 변수들
+  bool isSignToKorean = true;
   bool isCameraOn = false;
   bool isTranslating = false;
-  XFile? capturedVideo;
-  bool useRealtimeMode = true;
+  CameraController? cameraController;
 
+  // 프레임 처리 (모바일 방식 채택)
+  final List<Uint8List> frameBuffer = [];
+  static const int batchSize = 45; // 서버로 보낼 배치 크기
+  static const int maxBuffer = 120; // 메모리 보호 상한
+  bool busy = false; // 프레임 콜백 배압 플래그
+
+  // 전송 큐(직렬화) - 모바일과 동일
+  Future<void> sendQueue = Future.value();
+
+  // UI 및 번역 결과
   final TextEditingController inputController = TextEditingController();
-
-  // 콤보박스
   final List<String> langs = ['한국어', 'English', '日本語', '中文'];
   String selectedLang = '한국어';
 
@@ -33,66 +41,38 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   String? resultEnglish;
   String? resultJapanese;
   String? resultChinese;
+  String? lastShownword;
 
-  CameraController? cameraController;
-  final List<Uint8List> frameBuffer = [];
   final GlobalKey<AnimationWidgetState> animationKey =
       GlobalKey<AnimationWidgetState>();
-  List<Uint8List> decodeFrames = [];
+  List<Uint8List> decodedFrames = [];
 
-  // 실시간 인식 결과 누적 및 폴링
+  // 웹 전용 프레임 캡처 타이머 (이미지 스트림 대신)
+  Timer? frameTimer;
+  bool _isCapturingFrame = false;
 
+  // 실시간 번역 폴링
   Timer? _recognitionPollingTimer;
-  static const int _autoFinalizeWordCount = 3;
-  bool _autoFinalized = false;
-  final bool _continuousMode = true; // 연속 모드 활성화
 
-  // 프레임 상태 표시용 변수 추가
+  // 상태 표시
   String frameStatus = '';
   bool isCollectingFrames = false;
-  bool hasCollectedFramesOnce = false;
 
-  // 실시간 번역 관련 변수들
-  Timer? realtimeTranslationTimer;
-  bool isRealtimeTranslating = false;
-  List<String> translationHistory = []; // 번역 히스토리
-  DateTime? lastTranslationTime;
-
-  // 존재(움직임) 자동 감지 상태
+  // 존재 감지 (모바일과 동일한 로직)
   bool isSubjectPresent = false;
   int? lastFrameSample;
   int presenceScore = 0;
-  static const int presenceScoreEnter = 60; // 이 값 이상이면 존재로 판정
-  static const int presenceScoreExit = 30; // 이 값 이하이면 부재로 판정
-  static const int presenceScoreInc = 12; // 모션 있을 때 점수 증가량
-  static const int presenceScoreDecay = 6; // 모션 없을 때 점수 감소량
-
-  // 프레임 수집 관련 변수들
-  Timer? frameCollectionTimer;
-  static const int frameCollectionCount = 45;
-  static const int frameCollectionIntervalMs = 100;
-  static const Duration frameCollectionInterval = Duration(
-    milliseconds: frameCollectionIntervalMs,
-  );
-
-  // 웹 캡처 중복 호출 방지
-  bool _isCapturingWeb = false;
-
-  // 상태 텍스트 기반 보조 플래그
-  bool get _isErrorState =>
-      frameStatus.contains('오류') || frameStatus.contains('실패');
-  bool get _isAnalyzingState => frameStatus.contains('분석');
-  bool get _isRecognizingNow =>
-      isCameraOn &&
-      (_isAnalyzingState || isCollectingFrames || frameBuffer.isNotEmpty);
+  static const int presenceScoreEnter = 60;
+  static const int presenceScoreExit = 30;
+  static const int presenceScoreInc = 12;
+  static const int presenceScoreDecay = 6;
 
   Color get _cameraBorderColor {
     if (!isCameraOn) return TablerColors.border;
-    if (_isErrorState) return TablerColors.danger;
     return isSubjectPresent ? TablerColors.success : TablerColors.danger;
   }
 
-  double get _cameraBorderWidth => _isRecognizingNow ? 3 : 2;
+  double get _cameraBorderWidth => isCameraOn ? 3 : 2;
 
   @override
   void initState() {
@@ -101,126 +81,47 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
   @override
   void dispose() {
-    stopFrameCollection();
+    _stopFrameCapture();
     _stopRealtimePolling();
     stopCamera();
     inputController.dispose();
     super.dispose();
   }
 
-  Future<void> sendFrames(List<Uint8List> frames) async {
-    if (!hasCollectedFramesOnce) {
-      setState(() {
-        frameStatus = "프레임 ${frames.length}개 서버로 전송 중...";
-        isCollectingFrames = false;
-      });
-    }
-
-    print("프레임 ${frames.length}개 서버로 전송 시도...");
-    final List<String> base64Frames = frames
-        .map((frame) => base64Encode(frame))
-        .toList();
-
-    try {
-      final result = await TranslateApi.sendFrames(base64Frames);
-
-      if (result != null) {
-        print("서버 응답 성공: $result");
-        if (!hasCollectedFramesOnce) {
-          setState(() {
-            frameStatus = "분석 중... 잠시만 기다려주세요";
-          });
-        }
-      } else {
-        print("서버 응답 실패: result is null");
-        setState(() {
-          frameStatus = "전송 실패";
-        });
-      }
-    } catch (e) {
-      print("프레임 전송 중 오류 발생: $e");
-      setState(() {
-        frameStatus = "전송 오류 발생";
-      });
+  String? selectedTranslation() {
+    switch (selectedLang) {
+      case '한국어':
+        return resultKorean;
+      case 'English':
+        return resultEnglish;
+      case '日本語':
+        return resultJapanese;
+      case '中文':
+        return resultChinese;
+      default:
+        return resultKorean;
     }
   }
 
-  void startFrameCollection() {
-    frameCollectionTimer?.cancel();
-    frameCollectionTimer = Timer.periodic(frameCollectionInterval, (
-      timer,
-    ) async {
-      if (!isCameraOn || cameraController == null) {
-        timer.cancel();
-        return;
-      }
-
-      try {
-        if (_isCapturingWeb) return; // 중복 캡처 방지
-        _isCapturingWeb = true;
-
-        final picture = await cameraController!.takePicture();
-        final bytes = await picture.readAsBytes();
-        frameBuffer.add(bytes);
-
-        // 존재(움직임) 감지 업데이트
-        _updatePresence(bytes);
-
-        if (!hasCollectedFramesOnce) {
-          setState(() {
-            isCollectingFrames = true;
-            frameStatus =
-                "프레임 수집 중... (${frameBuffer.length}/$frameCollectionCount)\n지금 움직이세요!";
-          });
-        }
-
-        // 프레임이 충분히 모이면 전송하고 버퍼만 클리어
-        if (frameBuffer.length >= frameCollectionCount) {
-          final framesToSend = List<Uint8List>.from(frameBuffer);
-          frameBuffer.clear();
-
-          await sendFrames(framesToSend);
-
-          if (!hasCollectedFramesOnce) {
-            hasCollectedFramesOnce = true;
-            setState(() {
-              frameStatus = "";
-              isCollectingFrames = false;
-            });
-          }
-        }
-      } catch (e) {
-        print("웹 캡처 오류: $e");
-      } finally {
-        _isCapturingWeb = false;
-      }
-    });
-  }
-
-  void stopFrameCollection() {
-    frameCollectionTimer?.cancel();
-    frameCollectionTimer = null;
-  }
-
-  // 프레임 바이트를 샘플링해 간단한 변화량 계산
+  // 프레임 샘플링 (모바일과 동일)
   int _computeSample(Uint8List bytes) {
     int sum = 0;
-    final int step = bytes.length > 200000 ? 400 : 200; // 대략 샘플 간격
+    final int step = bytes.length > 200000 ? 400 : 200;
     for (int i = 0; i < bytes.length; i += step) {
       sum += bytes[i];
     }
     return sum;
   }
 
+  // 존재 감지 업데이트 (모바일과 동일)
   void _updatePresence(Uint8List bytes) {
     final int sample = _computeSample(bytes);
 
     if (lastFrameSample != null) {
       final int diff = (sample - lastFrameSample!).abs();
-      // 프레임당 샘플 개수에 비례한 간단 임계값
       final int step = bytes.length > 200000 ? 400 : 200;
       final int samples = (bytes.length + step - 1) ~/ step;
-      final int dynamicThreshold = samples * 8; // 기본 민감도
+      final int dynamicThreshold = samples * 8;
 
       final bool hasMotion = diff > dynamicThreshold;
       if (hasMotion) {
@@ -247,6 +148,141 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     lastFrameSample = sample;
   }
 
+  // 서버 전송 함수 (모바일과 동일)
+  Future<void> sendFrames(List<Uint8List> frames) async {
+    try {
+      debugPrint("프레임 ${frames.length}개 서버로 전송 시도...");
+      final payload = frames.map((f) => base64Encode(f)).toList();
+      final res = await TranslateApi.sendFrames(payload);
+
+      if (res == null) {
+        debugPrint('서버 응답 실패: result is null');
+        return;
+      }
+
+      final String korean = (res['korean'] as String? ?? '').trim();
+      if (korean.isEmpty) return;
+      if (korean == lastShownword) return;
+      if (!mounted) return;
+
+      setState(() {
+        lastShownword = korean;
+        resultKorean = korean;
+        resultEnglish = (res['english'] as String?) ?? '';
+        resultJapanese = (res['japanese'] as String?) ?? '';
+        resultChinese = (res['chinese'] as String?) ?? '';
+        frameStatus = '';
+      });
+    } catch (e) {
+      debugPrint('프레임 전송 중 오류: $e');
+      setState(() {
+        frameStatus = '전송 오류 발생';
+      });
+    }
+  }
+
+  // 전송 직렬화 (모바일과 동일)
+  void _enqueueSend(List<Uint8List> frames) {
+    sendQueue = sendQueue.then((_) => sendFrames(frames));
+  }
+
+  // 웹용 프레임 캡처 시작
+  void _startFrameCapture() {
+    frameTimer?.cancel();
+    frameTimer = Timer.periodic(const Duration(milliseconds: 111), (
+      timer,
+    ) async {
+      if (!isCameraOn || cameraController == null || _isCapturingFrame) return;
+
+      _isCapturingFrame = true;
+      try {
+        final picture = await cameraController!.takePicture();
+        final bytes = await picture.readAsBytes();
+
+        // 존재 감지 업데이트
+        _updatePresence(bytes);
+
+        // 프레임 버퍼 관리 (모바일과 동일한 로직)
+        if (frameBuffer.length >= maxBuffer) {
+          final int drop = frameBuffer.length - maxBuffer + 1;
+          frameBuffer.removeRange(0, drop);
+        }
+        frameBuffer.add(bytes);
+
+        // 상태 업데이트
+        if (mounted) {
+          setState(() {
+            isCollectingFrames = true;
+            frameStatus = "프레임 수집 중... (${frameBuffer.length}/$batchSize)";
+          });
+        }
+
+        // 배치 전송
+        while (frameBuffer.length >= batchSize) {
+          final chunk = List<Uint8List>.from(frameBuffer.take(batchSize));
+          frameBuffer.removeRange(0, batchSize);
+          _enqueueSend(chunk);
+
+          if (mounted) {
+            setState(() {
+              frameStatus = "분석 중... 잠시만 기다려주세요";
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('웹 프레임 캡처 오류: $e');
+      } finally {
+        _isCapturingFrame = false;
+      }
+    });
+  }
+
+  void _stopFrameCapture() {
+    frameTimer?.cancel();
+    frameTimer = null;
+  }
+
+  // 실시간 폴링 (모바일과 동일)
+  void _startRealtimePolling() {
+    _recognitionPollingTimer?.cancel();
+    _recognitionPollingTimer = Timer.periodic(const Duration(seconds: 3), (
+      timer,
+    ) async {
+      if (!mounted || !isCameraOn || !isSignToKorean) return;
+
+      try {
+        final latest = await TranslateApi.translateLatest();
+        if (latest == null) return;
+
+        String? korean;
+        final k = latest['korean'];
+        if (k is List) {
+          korean = k.join(' ');
+        } else if (k is String) {
+          korean = k.trim();
+        }
+
+        if (korean == null || korean.isEmpty) return;
+        if (korean == lastShownword) return;
+
+        setState(() {
+          lastShownword = korean;
+          resultKorean = korean;
+          resultEnglish = latest['english'] ?? '';
+          resultJapanese = latest['japanese'] ?? '';
+          resultChinese = latest['chinese'] ?? '';
+        });
+      } catch (e) {
+        debugPrint('실시간 폴링 오류: $e');
+      }
+    });
+  }
+
+  void _stopRealtimePolling() {
+    _recognitionPollingTimer?.cancel();
+    _recognitionPollingTimer = null;
+  }
+
   Future<void> startCamera() async {
     try {
       final cameras = await availableCameras();
@@ -263,23 +299,22 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         front,
         ResolutionPreset.medium,
         enableAudio: false,
+        // 웹에서는 JPEG 형식 사용
+        imageFormatGroup: ImageFormatGroup.jpeg,
       );
 
       await cameraController!.initialize();
 
-      startFrameCollection();
+      // 웹용 프레임 캡처 시작
+      _startFrameCapture();
+
       if (isSignToKorean) {
         _startRealtimePolling();
       }
 
       setState(() {
         isCameraOn = true;
-        _autoFinalized = false;
-        if (!hasCollectedFramesOnce) {
-          frameStatus = "카메라 준비 완료!\n수어 동작을 시작하세요";
-        } else {
-          frameStatus = "";
-        }
+        frameStatus = "카메라 준비 완료! 수어 동작을 시작하세요";
       });
 
       Fluttertoast.showToast(
@@ -288,7 +323,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         textColor: Colors.white,
       );
     } catch (e) {
-      print("카메라 초기화 실패: $e");
+      debugPrint("카메라 초기화 실패: $e");
       setState(() {
         frameStatus = "카메라 오류";
       });
@@ -308,25 +343,32 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       isCollectingFrames = false;
     });
 
-    print("카메라 중지 요청 수신");
-
-    stopFrameCollection();
+    _stopFrameCapture();
     _stopRealtimePolling();
 
+    // 전송 큐 대기
+    try {
+      await sendQueue;
+    } catch (_) {}
+
+    // 잔여 프레임 전송
     if (frameBuffer.isNotEmpty) {
       try {
-        print("잔여 프레임 ${frameBuffer.length}개 정리 중...");
+        final leftover = List<Uint8List>.from(frameBuffer);
         frameBuffer.clear();
+        await sendFrames(leftover);
       } catch (e) {
-        print("잔여 프레임 정리 실패: $e");
+        debugPrint('잔여 프레임 전송 실패: $e');
       }
     }
 
+    await Future.delayed(const Duration(milliseconds: 300));
+
     try {
       await cameraController!.dispose();
-      print("컨트롤러 dispose 완료");
+      debugPrint('컨트롤러 dispose 완료');
     } catch (e) {
-      print("컨트롤러 dispose 오류: $e");
+      debugPrint('컨트롤러 dispose 오류: $e');
     } finally {
       cameraController = null;
     }
@@ -335,7 +377,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       setState(() {
         isCameraOn = false;
         frameStatus = "";
-        hasCollectedFramesOnce = false;
+        isCollectingFrames = false;
       });
     }
   }
@@ -356,60 +398,12 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     resultEnglish = null;
     resultJapanese = null;
     resultChinese = null;
-    decodeFrames = [];
+    decodedFrames = [];
     inputController.clear();
     frameStatus = '';
     isCollectingFrames = false;
-    hasCollectedFramesOnce = false;
     frameBuffer.clear();
-
-    _autoFinalized = false;
-  }
-
-  // --- 실시간 인식 폴링 로직 ---
-  void _startRealtimePolling() {
-    _recognitionPollingTimer?.cancel();
-    _recognitionPollingTimer = Timer.periodic(const Duration(seconds: 5), (
-      timer,
-    ) async {
-      if (!mounted || !isCameraOn || !isSignToKorean) return;
-      try {
-        final latest = await TranslateApi.translateLatest();
-        if (latest == null) return;
-
-        String? korean;
-        final k = latest['korean'];
-        if (k is List) {
-          korean = k.join(' ');
-        } else if (k is String) {
-          korean = k.trim();
-        }
-
-        if (korean == null || korean.isEmpty) return;
-
-        setState(() {
-          resultKorean = korean;
-        });
-
-        // 자동 완료 조건 체크 (단어 개수 기준) - 연속 모드에서는 비활성화
-        if (!_continuousMode) {
-          final wordCount = korean
-              .split(RegExp(r"\s+"))
-              .where((e) => e.trim().isNotEmpty)
-              .length;
-          if (!_autoFinalized && wordCount >= _autoFinalizeWordCount) {
-            _autoFinalized = true;
-            // 기존 버튼 로직 재사용
-            await handleTranslate();
-          }
-        }
-      } catch (_) {}
-    });
-  }
-
-  void _stopRealtimePolling() {
-    _recognitionPollingTimer?.cancel();
-    _recognitionPollingTimer = null;
+    lastShownword = null;
   }
 
   Future<void> handleTranslate() async {
@@ -417,7 +411,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
     try {
       if (isSignToKorean) {
-        // 수어 -> 텍스트 번역
         setState(() {
           frameStatus = "번역 결과 처리 중...";
         });
@@ -432,7 +425,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
             resultJapanese = result['japanese'];
             resultChinese = result['chinese'];
             frameStatus = "";
-            isCollectingFrames = false;
           });
 
           Fluttertoast.showToast(
@@ -447,7 +439,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
           showTranslationError('번역 결과를 가져올 수 없습니다');
         }
       } else {
-        // 텍스트 -> 수어 번역
         final word = inputController.text.trim();
         if (word.isEmpty) {
           Fluttertoast.showToast(
@@ -461,7 +452,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         final frameList = await TranslateApi.translate_word_to_video(word);
         if (frameList != null && frameList.isNotEmpty) {
           setState(() {
-            decodeFrames = frameList.map((b64) => base64Decode(b64)).toList();
+            decodedFrames = frameList.map((b64) => base64Decode(b64)).toList();
             resultKorean = word;
           });
 
@@ -481,62 +472,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       showTranslationError('번역 중 오류가 발생했습니다');
     } finally {
       setState(() => isTranslating = false);
-    }
-  }
-
-  Future<void> translateSignToText() async {
-    try {
-      final result = await TranslateApi.translateLatest();
-      if (result != null) {
-        setState(() {
-          resultKorean = result['korean'] ?? '';
-          resultEnglish = result['english'] ?? '';
-          resultJapanese = result['japanese'] ?? '';
-          resultChinese = result['chinese'] ?? '';
-        });
-
-        Fluttertoast.showToast(
-          msg: '번역이 완료되었습니다',
-          backgroundColor: TablerColors.success,
-          textColor: Colors.white,
-        );
-      } else {
-        showTranslationError('번역 결과를 가져올 수 없습니다');
-      }
-    } catch (e) {
-      showTranslationError('번역 중 오류가 발생했습니다');
-    }
-  }
-
-  Future<void> translateTextToSign() async {
-    final word = inputController.text.trim();
-    if (word.isEmpty) {
-      Fluttertoast.showToast(
-        msg: '번역할 단어를 입력하세요',
-        backgroundColor: TablerColors.warning,
-        textColor: Colors.white,
-      );
-      return;
-    }
-
-    try {
-      final frameList = await TranslateApi.translate_word_to_video(word);
-      if (frameList != null && frameList.isNotEmpty) {
-        setState(() {
-          decodeFrames = frameList.map((b64) => base64Decode(b64)).toList();
-          resultKorean = word;
-        });
-
-        Fluttertoast.showToast(
-          msg: '수어 번역이 완료되었습니다',
-          backgroundColor: TablerColors.success,
-          textColor: Colors.white,
-        );
-      } else {
-        showTranslationError('해당 단어의 수어 영상을 찾을 수 없습니다');
-      }
-    } catch (e) {
-      showTranslationError('수어 번역 중 오류가 발생했습니다');
     }
   }
 
@@ -651,7 +586,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       );
     }
 
-    // 언어 선택 드롭다운
     bool canChange =
         (isSignToKorean && isTarget) || (!isSignToKorean && !isTarget);
 
@@ -756,7 +690,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
                 color: _cameraBorderColor,
                 width: _cameraBorderWidth,
               ),
-              boxShadow: _isRecognizingNow
+              boxShadow: isCameraOn
                   ? [
                       BoxShadow(
                         color: _cameraBorderColor.withOpacity(0.3),
@@ -884,7 +818,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   }
 
   Widget buildTextResults() {
-    // 프레임 수집/전송 상태가 있으면 표시
     if (frameStatus.isNotEmpty) {
       return Center(
         child: Column(
@@ -895,9 +828,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
               size: 48,
               color: TablerColors.textSecondary,
             ),
-
             SizedBox(height: 16),
-
             Text(
               frameStatus,
               textAlign: TextAlign.center,
@@ -912,7 +843,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       );
     }
 
-    // 번역 결과가 있으면 표시
     if (resultKorean == null) {
       return Center(
         child: Column(
@@ -934,7 +864,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 수어 -> 텍스트 번역 결과
           if (isSignToKorean && resultKorean != null) ...[
             Container(
               margin: EdgeInsets.only(bottom: 12),
@@ -958,38 +887,13 @@ class TranslateScreenWebState extends State<TranslateScreen> {
                     ),
                   ),
                   SizedBox(height: 4),
-                  if (selectedLang == '한국어')
-                    Text(
-                      '$resultKorean',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: TablerColors.textPrimary,
-                      ),
+                  Text(
+                    selectedTranslation() ?? '',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: TablerColors.textPrimary,
                     ),
-                  if (selectedLang == 'English')
-                    Text(
-                      '$resultEnglish',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: TablerColors.textPrimary,
-                      ),
-                    ),
-                  if (selectedLang == '日本語')
-                    Text(
-                      '$resultJapanese',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: TablerColors.textPrimary,
-                      ),
-                    ),
-                  if (selectedLang == '中文')
-                    Text(
-                      '$resultChinese',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: TablerColors.textPrimary,
-                      ),
-                    ),
+                  ),
                 ],
               ),
             ),
@@ -1000,7 +904,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   }
 
   Widget buildVideoResult() {
-    if (!isSignToKorean && decodeFrames.isNotEmpty) {
+    if (!isSignToKorean && decodedFrames.isNotEmpty) {
       return Column(
         children: [
           Expanded(
@@ -1015,7 +919,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
                   aspectRatio: 16 / 9,
                   child: AnimationWidget(
                     key: animationKey,
-                    frames: decodeFrames,
+                    frames: decodedFrames,
                     fps: 12.0,
                   ),
                 ),
