@@ -470,11 +470,11 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
               ),
             ]
           : null,
-      child: SizedBox(height: 400, child: _buildRecordsContent()),
+      child: SizedBox(height: 400, child: buildRecordsContent()),
     );
   }
 
-  Widget _buildRecordsContent() {
+  Widget buildRecordsContent() {
     if (isLoadingRecords) {
       return Center(
         child: Column(

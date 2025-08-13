@@ -14,236 +14,60 @@
     This is a placeholder for base href that will be replaced by the value of
     the `--base-href` argument provided to `flutter build`.
   -->
-  <base href="$FLUTTER_BASE_HREF">
+  <!-- <base href="$FLUTTER_BASE_HREF"> -->
+  <base href="/">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
 
   <!-- iOS meta tags & icons -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="sign_web">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="permissions-policy" content="camera=()">  <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
-
-  <title>sign_web</title>
-  <link rel="manifest" href="manifest.json">
-
-  <!-- MediaPipe 라이브러리 (선택적 로드) -->
+  <!-- web/index.html -->
+<head>
+  ...
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
   <script>
-    // MediaPipe 라이브러리를 안전하게 로드
-    function loadMediaPipeLibraries() {
-      const scripts = [
-        'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js',
-        'https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js',
-        'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js',
-        'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js',
-        'https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js'
-      ];
-
-      let loadedCount = 0;
-      let hasError = false;
-
-      scripts.forEach(src => {
-        const script = document.createElement('script');
-        script.src = src;
-        script.crossOrigin = 'anonymous';
-        
-        script.onload = () => {
-          loadedCount++;
-          if (loadedCount === scripts.length && !hasError) {
-            console.log('MediaPipe 라이브러리 로드 완료');
-            initializeMediaPipe();
-          }
-        };
-        
-        script.onerror = () => {
-          hasError = true;
-          console.warn('MediaPipe 라이브러리 로드 실패:', src);
-        };
-        
-        document.head.appendChild(script);
-      });
-    }
-
-    // MediaPipe 초기화 함수
-    function initializeMediaPipe() {
-      try {
-        // MediaPipe 손 감지 초기화
-        window.initializeMediaPipe = function() {
-          try {
-            if (typeof Hands === 'undefined') {
-              console.warn('MediaPipe Hands 라이브러리가 로드되지 않았습니다.');
-              return null;
-            }
-
-            const hands = new Hands({
-              locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-              }
-            });
-            
-            hands.setOptions({
-              maxNumHands: 2,
-              modelComplexity: 1,
-              minDetectionConfidence: 0.5,
-              minTrackingConfidence: 0.5
-            });
-            
-            return hands;
-          } catch (e) {
-            console.error('MediaPipe 손 감지 초기화 실패:', e);
-            return null;
-          }
-        };
-        
-        // MediaPipe 포즈 감지 초기화
-        window.initializeMediaPipePose = function() {
-          try {
-            if (typeof Pose === 'undefined') {
-              console.warn('MediaPipe Pose 라이브러리가 로드되지 않았습니다.');
-              return null;
-            }
-
-            const pose = new Pose({
-              locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
-              }
-            });
-            
-            pose.setOptions({
-              modelComplexity: 1,
-              smoothLandmarks: true,
-              enableSegmentation: false,
-              smoothSegmentation: true,
-              minDetectionConfidence: 0.5,
-              minTrackingConfidence: 0.5
-            });
-            
-            return pose;
-          } catch (e) {
-            console.error('MediaPipe 포즈 감지 초기화 실패:', e);
-            return null;
-          }
-        };
-        
-        // 이미지에서 손/포즈 감지
-        window.detectHandsAndPose = function(imageDataArray, width, height) {
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            
-            // Uint8List를 ImageData로 변환
-            const imgData = ctx.createImageData(width, height);
-            for (let i = 0; i < imageDataArray.length && i < imgData.data.length; i++) {
-              imgData.data[i] = imageDataArray[i];
-            }
-            ctx.putImageData(imgData, 0, 0);
-            
-            // 손 감지
-            if (window.handsDetector) {
-              window.handsDetector.send({image: canvas});
-            }
-            
-            // 포즈 감지
-            if (window.poseDetector) {
-              window.poseDetector.send({image: canvas});
-            }
-          } catch (e) {
-            console.error('MediaPipe 감지 오류:', e);
-          }
-        };
-        
-        // 감지 결과를 Flutter로 전달하는 콜백 설정
-        window.setMediaPipeCallbacks = function(handsCallback, poseCallback) {
-          try {
-            if (window.handsDetector && handsCallback) {
-              window.handsDetector.onResults((results) => {
-                try {
-                  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                    const handsData = results.multiHandLandmarks.map(landmarks => 
-                      landmarks.map(point => ({x: point.x, y: point.y, z: point.z}))
-                    );
-                    handsCallback(JSON.stringify({
-                      hands: handsData,
-                      handedness: results.multiHandedness
-                    }));
-                  }
-                } catch (e) {
-                  console.error('손 감지 결과 처리 오류:', e);
-                }
-              });
-            }
-            
-            if (window.poseDetector && poseCallback) {
-              window.poseDetector.onResults((results) => {
-                try {
-                  if (results.poseLandmarks && results.poseLandmarks.length > 0) {
-                    const poseData = results.poseLandmarks.map(point => 
-                      ({x: point.x, y: point.y, z: point.z, visibility: point.visibility})
-                    );
-                    poseCallback(JSON.stringify({
-                      pose: poseData
-                    }));
-                  }
-                } catch (e) {
-                  console.error('포즈 감지 결과 처리 오류:', e);
-                }
-              });
-            }
-          } catch (e) {
-            console.error('MediaPipe 콜백 설정 오류:', e);
-          }
-        };
-
-        console.log('MediaPipe 함수들 초기화 완료');
-      } catch (e) {
-        console.error('MediaPipe 초기화 중 오류:', e);
+    // OpenCV.js 로드 완료 신호
+    window.cvReady = new Promise((resolve) => {
+      const check = () => {
+        if (window.cv && window.cv.Mat) resolve(true);
+        else setTimeout(check, 50);
+      };
+      if (window.cv) {
+        window.cv['onRuntimeInitialized'] = () => resolve(true);
       }
-    }
+      check();
+    });
+
+    // 캔버스 RGBA 프레임을 그레이로 변환해 같은 캔버스에 그려주는 예시
+    window.cvGray = function(canvas) {
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width, h = canvas.height;
+      const srcData = ctx.getImageData(0, 0, w, h);
+      const src = cv.matFromImageData(srcData);
+      const gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.cvtColor(gray, src, cv.COLOR_GRAY2RGBA); // 다시 RGBA로
+      cv.imshow(canvas, src);
+      src.delete(); gray.delete();
+    };
   </script>
 </head>
-<body>
-  <script>
-    // 최신 Flutter 웹 앱 초기화 (경고 없음)
-    window.addEventListener('load', function(ev) {
-      // MediaPipe 라이브러리 로드 시작
-      loadMediaPipeLibraries();
 
-      // 최신 Flutter Loader API 사용
-      _flutter.loader.load().then(function(engineInitializer) {
-        return engineInitializer.initializeEngine();
-      }).then(function(appRunner) {
-        return appRunner.runApp();
-      }).then(function() {
-        console.log('Flutter 앱 로드 완료');
-        
-        // Flutter 앱 로드 후 MediaPipe 디텍터 초기화
-        setTimeout(function() {
-          try {
-            if (window.initializeMediaPipe && window.initializeMediaPipePose) {
-              window.handsDetector = window.initializeMediaPipe();
-              window.poseDetector = window.initializeMediaPipePose();
-              
-              if (window.handsDetector || window.poseDetector) {
-                console.log('MediaPipe 디텍터 초기화 완료');
-              } else {
-                console.log('MediaPipe 디텍터 초기화 실패 - 기본 감지 모드로 동작');
-              }
-            }
-          } catch (e) {
-            console.error('MediaPipe 디텍터 초기화 오류:', e);
-          }
-        }, 1000);
-      }).catch(function(error) {
-        console.error('Flutter 앱 로드 오류:', error);
-      });
-    });
-  </script>
+  
+
+  <title>web</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
