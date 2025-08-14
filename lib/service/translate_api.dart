@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:sign_web/service/token_storage.dart';
 
-const String baseUrl = 'http://10.101.170.52';
+const String baseUrl = 'http://10.101.84.218';
 
 class TranslateApi {
   // 수어 -> 단어
@@ -126,7 +126,7 @@ class TranslateApi {
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        debugPrint("서버 프레임 분석 성공: ${result['korean']}");
+        print(result);
         return {
           'korean': result['korean'],
           'english': result['english']['text'] ?? '',
@@ -211,64 +211,6 @@ class TranslateApi {
       }
     } catch (e) {
       print("요청 오류: $e");
-    }
-
-    return null;
-  }
-
-  // 메타 데이터로 접근(테스트해봐야함.)
-  static Future<String?> sendFramesRealtimeMode(
-    List<String> base64Frames,
-  ) async {
-    final accessToken = await TokenStorage.getAccessToken();
-    final refreshToken = await TokenStorage.getRefreshToken();
-
-    if (accessToken == null) {
-      print("Error: Access Token is missing. Cannot proceed with the request.");
-      return null;
-    }
-
-    final url = Uri.parse(
-      "$baseUrl/translate/analyze_frames?mode=realtime&fps=5",
-    );
-
-    print("실시간 모드로 프레임 ${base64Frames.length}개 서버 전송 시작...");
-
-    try {
-      final response = await http.post(
-        url,
-        headers: {
-          'Authorization': 'Bearer $accessToken',
-          'X-Refresh-Token': refreshToken ?? '',
-          'Content-Type': 'application/json',
-          'X-Capture-FPS': '5',
-          'X-Realtime-Mode': 'true',
-          'X-Client-Type': 'flutter_web',
-        },
-        body: jsonEncode({
-          'frames': base64Frames,
-          'capture_interval_ms': 200,
-          'realtime': true,
-          'expected_playback_fps': 5,
-        }),
-      );
-
-      final newToken = response.headers['x-new-access-token'];
-      if (newToken != null && newToken.isNotEmpty) {
-        print("새 액세스 토큰 수신 및 저장 완료.");
-        await TokenStorage.setAccessToken(newToken);
-      }
-
-      if (response.statusCode == 200) {
-        final result = jsonDecode(response.body);
-        print("실시간 모드 서버 분석 성공: ${result['status']}");
-        return result['status'];
-      } else {
-        print("실시간 모드 서버 분석 실패: Status ${response.statusCode}");
-        print("서버 응답 본문: ${response.body}");
-      }
-    } catch (e) {
-      print("실시간 모드 프레임 전송 중 예외 발생: $e");
     }
 
     return null;
