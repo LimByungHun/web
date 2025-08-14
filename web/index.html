@@ -1,86 +1,233 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
-  <!-- <base href="$FLUTTER_BASE_HREF"> -->
   <base href="/">
-
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
-
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="sign_web">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <meta name="permissions-policy" content="camera=(self)">
-
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
-  <!-- web/index.html -->
-<head>
-  ...
-  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+
   <script>
-    // 카메라 권한 요청
+    //  기존 단순한 초기화 방식으로 되돌리기
     async function requestCameraPermission() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        stream.getTracks().forEach(track => track.stop()); // 권한만 확인하고 스트림은 중지
-        console.log('카메라 권한이 허용되었습니다.');
+        stream.getTracks().forEach(track => track.stop());
+        console.log(' 카메라 권한 허용됨');
+        return true;
       } catch (error) {
-        console.error('카메라 권한 요청 실패:', error);
+        console.error(' 카메라 권한 요청 실패:', error);
+        return false;
       }
     }
 
-    // 페이지 로드 시 카메라 권한 요청
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      requestCameraPermission();
-    }
-
-    // OpenCV.js 로드 완료 신호
+    //  기존 방식: 단순한 OpenCV 로드
     window.cvReady = new Promise((resolve) => {
       const check = () => {
-        if (window.cv && window.cv.Mat) resolve(true);
-        else setTimeout(check, 50);
-      };
-              if (window.cv) {
-          window.cv['onRuntimeInitialized'] = () => resolve(true);
+        if (window.cv && window.cv.Mat) {
+          console.log(' OpenCV 로드 완료');
+          resolve(true);
+        } else {
+          setTimeout(check, 100); // 100ms 간격으로 체크
         }
+      };
+      
+      if (window.cv) {
+        window.cv['onRuntimeInitialized'] = () => {
+          console.log(' OpenCV Runtime 초기화 완료');
+          resolve(true);
+        };
+      }
+      
       check();
+      
+      // 타임아웃: 30초
+      setTimeout(() => {
+        console.warn(' OpenCV 로드 타임아웃');
+        resolve(false);
+      }, 30000);
     });
 
-    // 캔버스 RGBA 프레임을 그레이로 변환해 같은 캔버스에 그려주는 예시
-    window.cvGray = function(canvas) {
-      const ctx = canvas.getContext('2d');
-      const w = canvas.width, h = canvas.height;
-      const srcData = ctx.getImageData(0, 0, w, h);
-      const src = cv.matFromImageData(srcData);
-      const gray = new cv.Mat();
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-      cv.cvtColor(gray, src, cv.COLOR_GRAY2RGBA); // 다시 RGBA로
-      cv.imshow(canvas, src);
-      src.delete(); gray.delete();
+    //  컬러 처리 로직은 그대로 유지
+    window.processImageBase64 = function (base64Input) {
+      return new Promise((resolve, reject) => {
+        // OpenCV 상태 확인
+        if (!window.cv || !window.cv.Mat) {
+          console.log(' OpenCV 미로드, 원본 컬러 유지');
+          resolve(base64Input);
+          return;
+        }
+
+        try {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              // 캔버스 생성 및 이미지 그리기
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+
+              // OpenCV Mat 생성 (컬러 유지)
+              let src = cv.imread(canvas);
+              
+              // RGBA → RGB 변환
+              if (src.channels() === 4) {
+                cv.cvtColor(src, src, cv.COLOR_RGBA2RGB);
+              }
+              
+              //  컬러 기반 수어 인식 최적화
+              let enhanced = new cv.clone();
+              
+              // 1. 양방향 필터 (노이즈 제거 + 경계 보존) - 강도 낮춤
+              //cv.bilateralFilter(src, enhanced, 5, 50, 50); // 9,75,75 → 5,50,50              
+              
+              // 2. HSV 색공간에서 개선
+              let hsv = new cv.Mat();
+              cv.cvtColor(enhanced, hsv, cv.COLOR_RGB2HSV);
+              
+              // HSV 채널 분리
+              let hsvChannels = new cv.MatVector();
+              cv.split(hsv, hsvChannels);
+              
+              // V(밝기) 채널만 히스토그램 균등화
+              let v = hsvChannels.get(2);
+              cv.equalizeHist(v, v);
+              
+              // 채널 다시 합치기
+              cv.merge(hsvChannels, hsv);
+              cv.cvtColor(hsv, enhanced, cv.COLOR_HSV2RGB);
+              
+              // 3. 적응적 대비 향상 (CLAHE)
+              let lab = new cv.Mat();
+              cv.cvtColor(enhanced, lab, cv.COLOR_RGB2Lab);
+              
+              let labChannels = new cv.MatVector();
+              cv.split(lab, labChannels);
+              
+              // CLAHE 적용 (L 채널)
+              let clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
+              let l = labChannels.get(0);
+              clahe.apply(l, l);
+              
+              // 채널 합치기 및 RGB 변환
+              cv.merge(labChannels, lab);
+              cv.cvtColor(lab, enhanced, cv.COLOR_Lab2RGB);
+              
+              // 4. 언샤프 마스킹 (선명도 향상) - 블러 줄임
+              let blurred = new cv.Mat();
+              cv.GaussianBlur(enhanced, blurred, new cv.Size(1, 1), 0); // 3,3 → 1,1
+              
+              let final = new cv.Mat();
+              cv.addWeighted(enhanced, 1.5, blurred, -0.5, 0, final); // 선명도 증가
+              
+              // 5. 컬러 채도 약간 증가
+              cv.cvtColor(final, hsv, cv.COLOR_RGB2HSV);
+              cv.split(hsv, hsvChannels);
+              
+              let s = hsvChannels.get(1);
+              s.convertTo(s, -1, 1.1, 5); // 채도 10% 증가
+              
+              cv.merge(hsvChannels, hsv);
+              cv.cvtColor(hsv, final, cv.COLOR_HSV2RGB);
+
+              // 결과를 캔버스에 출력
+              const outputCanvas = document.createElement('canvas');
+              outputCanvas.width = final.cols;
+              outputCanvas.height = final.rows;
+              cv.imshow(outputCanvas, final);
+
+              // 메모리 해제
+              src.delete();
+              enhanced.delete();
+              hsv.delete();
+              hsvChannels.delete();
+              v.delete();
+              lab.delete();
+              labChannels.delete();
+              l.delete();
+              clahe.delete();
+              blurred.delete();
+              final.delete();
+              s.delete();
+
+              // 고품질 JPEG 변환 (95% 품질)
+              const result = outputCanvas.toDataURL('image/jpeg', 0.95);
+              console.log(' 컬러 최적화 처리 완료');
+              resolve(result);
+              
+            } catch (error) {
+              console.error(' 컬러 최적화 처리 오류:', error);
+              resolve(base64Input); // 오류시 원본 반환
+            }
+          };
+
+          img.onerror = () => {
+            console.error('🖼️ 이미지 로드 실패');
+            resolve(base64Input);
+          };
+
+          img.src = base64Input;
+        } catch (error) {
+          console.error('📸 processImageBase64 오류:', error);
+          resolve(base64Input);
+        }
+      });
     };
+
+    // 성능 모니터링
+    window.getProcessingStats = function() {
+      return {
+        mode: 'color_optimized_v2',
+        features: [
+          ' 컬러 정보 보존',
+          ' 양방향 필터링 (최적화)',
+          ' 적응적 히스토그램 균등화',
+          ' 언샤프 마스킹 (개선)',
+          ' 채도 최적화'
+        ]
+      };
+    };
+
+    // OpenCV 상태 확인 함수
+    window.isOpenCVReady = function() {
+      return window.cv && window.cv.Mat && typeof window.cv.imread === 'function';
+    };
+
+    // 페이지 로드시 초기화
+    document.addEventListener('DOMContentLoaded', async () => {
+      console.log('📄 페이지 로드 완료');
+      
+      // 카메라 권한 요청
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        await requestCameraPermission();
+      }
+      
+      // OpenCV 로드 완료 대기
+      try {
+        const loaded = await window.cvReady;
+        if (loaded) {
+          console.log(' 모든 초기화 완료 - OpenCV 사용 가능');
+        } else {
+          console.error(' OpenCV 로드 실패 - 수어 인식 불가능');
+        }
+      } catch (error) {
+        console.error(' 초기화 실패:', error);
+      }
+    });
   </script>
-</head>
 
-  
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 
-  <title>web</title>
+  <title>sign_web</title>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
