@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sign_web/service/animation_api.dart';
@@ -8,7 +10,6 @@ import 'package:sign_web/service/translate_api.dart';
 import 'package:sign_web/widget/animation_widget.dart';
 import 'package:sign_web/screen/study_screen.dart';
 import 'package:sign_web/service/study_api.dart';
-import 'package:sign_web/widget/camera_widget.dart';
 import 'package:sign_web/theme/tabler_theme.dart';
 import 'package:sign_web/widget/tablerui_widget.dart';
 
@@ -32,20 +33,60 @@ class GenericStudyWidget extends StatefulWidget {
 class GenericStudyWidgetState extends State<GenericStudyWidget> {
   late PageController pageCtrl;
   int pageIndex = 0;
-  bool showCamera = false;
   bool isLoading = false;
 
   final GlobalKey<AnimationWidgetState> animationKey = GlobalKey();
   List<Uint8List>? base64Frames;
 
-  // 카메라에서 수집된 프레임들을 저장
-  List<Uint8List> collectedFrames = [];
+  // TranslateScreen의 카메라 기능 복사
+  bool isCameraOn = false;
+  CameraController? cameraController;
+
+  // 프레임 처리
+  final List<Uint8List> frameBuffer = [];
+  static const int batchSize = 20;
+  static const int maxBuffer = 120;
+  bool forcestop = false;
+
+  // 전송 큐
+  Future<void> sendQueue = Future.value();
+
+  // 상태 표시
+  String frameStatus = '';
+  bool isCollectingFrames = false;
+
+  // 프레임 캡처 상태
+  bool _isCapturingFrame = false;
+
+  // 웹 전용 프레임 캡처 타이머
+  Timer? frameTimer;
+
+  // 누적 인식 결과들
+  List<String> recognizedWords = [];
+  String? lastShownword;
+
+  // 카메라 테두리 색상
+  Color get _cameraBorderColor {
+    if (!isCameraOn) return TablerColors.border;
+    return TablerColors.success; // 카메라 켜져 있을 때 녹색
+  }
+
+  double get _cameraBorderWidth => isCameraOn ? 3 : 2;
 
   @override
   void initState() {
     super.initState();
     pageCtrl = PageController(initialPage: 0);
     loadAnimationFrames(widget.items[pageIndex]);
+  }
+
+  @override
+  void dispose() {
+    forcestop = true;
+    _stopFrameCapture();
+    stopCamera();
+    pageCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> onNext() async {
@@ -101,167 +142,371 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
     setState(() => isLoading = false);
   }
 
+  // TranslateScreen의 프레임 전송 함수 복사
+  Future<void> sendFrames(List<Uint8List> frames) async {
+    try {
+      debugPrint("프레임 ${frames.length}개 서버로 전송 시도...");
+      final payload = frames.map((f) => base64Encode(f)).toList();
+      final res = await TranslateApi.sendFrames(payload);
+
+      if (res == null) {
+        debugPrint('서버 응답 실패: result is null');
+        return;
+      }
+
+      // 한국어 결과 필터링 및 처리
+      final String korean = (res['korean'] as String? ?? '').trim();
+
+      // 필터링: 빈 문자열이거나 "인식된 단어가 없습니다" 메시지는 무시
+      if (korean.isEmpty ||
+          korean.contains('인식된 단어가 없습니다') ||
+          korean.contains('인식 실패') ||
+          korean.contains('없음') ||
+          korean.toLowerCase().contains('no word') ||
+          korean.toLowerCase().contains('unknown')) {
+        debugPrint('필터링된 결과: $korean');
+        return;
+      }
+
+      // 중복 방지: 이전과 같은 결과면 무시
+      if (korean == lastShownword) {
+        debugPrint('중복 결과 무시: $korean');
+        return;
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        lastShownword = korean;
+        // 새로운 단어를 누적 리스트에 추가
+        if (!recognizedWords.contains(korean)) {
+          recognizedWords.add(korean);
+        }
+        frameStatus = '인식 완료: $korean';
+      });
+
+      // 성공 시 잠시 상태 유지 후 기본 상태로 복원
+      Future.delayed(Duration(seconds: 2), () {
+        if (mounted && isCameraOn) {
+          setState(() {
+            frameStatus = "프레임 수집 중... (실시간 인식)";
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('프레임 전송 중 오류: $e');
+      setState(() {
+        frameStatus = '전송 오류 발생';
+      });
+    }
+  }
+
+  // 전송 직렬화
+  void _enqueueSend(List<Uint8List> frames) {
+    sendQueue = sendQueue.then((_) => sendFrames(frames));
+  }
+
+  // 프레임 캡처
+  void _startFrameCapture() {
+    frameTimer?.cancel();
+    forcestop = false;
+    frameTimer = Timer.periodic(const Duration(milliseconds: 33), (
+      timer,
+    ) async {
+      if (forcestop ||
+          !isCameraOn ||
+          cameraController == null ||
+          _isCapturingFrame)
+        return;
+
+      _isCapturingFrame = true;
+      try {
+        final picture = await cameraController!.takePicture();
+        final bytes = await picture.readAsBytes();
+
+        // 프레임 버퍼 관리
+        if (frameBuffer.length >= maxBuffer) {
+          final int drop = frameBuffer.length - maxBuffer + 1;
+          frameBuffer.removeRange(0, drop);
+        }
+        frameBuffer.add(bytes);
+
+        // 배치 전송 및 상태 업데이트
+        if (frameBuffer.length >= batchSize) {
+          final chunk = List<Uint8List>.from(frameBuffer.take(batchSize));
+          frameBuffer.removeRange(0, batchSize);
+          _enqueueSend(chunk);
+        } else {
+          // 프레임 수집 중 상태 (덜 자주 업데이트)
+          if (mounted && frameBuffer.length % 15 == 0) {
+            setState(() {
+              frameStatus = "프레임 수집 중... (${frameBuffer.length}/$batchSize)";
+              isCollectingFrames = true;
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('프레임 캡처 오류: $e');
+        if (mounted && !frameStatus.contains('오류')) {
+          setState(() {
+            frameStatus = "프레임 캡처 오류 (재시도 중)";
+          });
+        }
+      } finally {
+        _isCapturingFrame = false;
+      }
+    });
+  }
+
+  void _stopFrameCapture() {
+    forcestop = true;
+    frameTimer?.cancel();
+    frameTimer = null;
+    _isCapturingFrame = false;
+  }
+
+  Future<void> startCamera() async {
+    try {
+      // 이전 결과 초기화
+      setState(() {
+        lastShownword = null;
+        recognizedWords.clear();
+        frameStatus = "카메라 초기화 중...";
+      });
+
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        throw Exception('카메라를 찾을 수 없습니다');
+      }
+
+      final front = cameras.firstWhere(
+        (cam) => cam.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+
+      cameraController = CameraController(
+        front,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+
+      await cameraController!.initialize();
+
+      // 프레임 캡처 시작
+      _startFrameCapture();
+
+      setState(() {
+        isCameraOn = true;
+        frameStatus = "준비완료 - 수어 동작을 시작하세요";
+      });
+    } catch (e) {
+      debugPrint("카메라 초기화 실패: $e");
+      setState(() {
+        frameStatus = "카메라 오류: $e";
+      });
+    }
+  }
+
+  Future<void> stopCamera() async {
+    forcestop = true;
+    if (cameraController == null) return;
+
+    setState(() {
+      frameStatus = "카메라 중지 중...";
+      isCollectingFrames = false;
+      isCameraOn = false;
+    });
+
+    _stopFrameCapture();
+
+    // 전송 큐 대기
+    try {
+      await sendQueue;
+    } catch (_) {}
+
+    // 잔여 프레임이 있으면 전송
+    if (frameBuffer.isNotEmpty) {
+      try {
+        final leftover = List<Uint8List>.from(frameBuffer);
+        frameBuffer.clear();
+        await sendFrames(leftover);
+      } catch (e) {
+        debugPrint('잔여 프레임 전송 실패: $e');
+      }
+    }
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    try {
+      await cameraController!.dispose();
+      debugPrint('컨트롤러 dispose 완료');
+    } catch (e) {
+      debugPrint('컨트롤러 dispose 오류: $e');
+    } finally {
+      cameraController = null;
+    }
+
+    if (mounted) {
+      setState(() {
+        isCameraOn = false;
+        isCollectingFrames = false;
+        frameStatus = "";
+      });
+    }
+  }
+
   Future<void> _analyzeFrames() async {
     try {
       final expected = widget.items[pageIndex];
 
-      if (collectedFrames.isEmpty) {
+      // 카메라를 먼저 중지
+      await stopCamera();
+
+      // 최종 번역 결과 확인
+      setState(() {
+        frameStatus = "번역 결과 확인 중...";
+      });
+
+      final result = await TranslateApi.translateLatest();
+      if (result != null) {
+        final recognizedWord = result['korean'] is List
+            ? (result['korean'] as List).join(' ')
+            : result['korean']?.toString() ?? '';
+
+        final isCorrect =
+            recognizedWord.toLowerCase().trim() ==
+            expected.toLowerCase().trim();
+
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color:
+                          (isCorrect
+                                  ? TablerColors.success
+                                  : TablerColors.danger)
+                              .withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      isCorrect ? Icons.check_circle : Icons.cancel,
+                      color: isCorrect
+                          ? TablerColors.success
+                          : TablerColors.danger,
+                      size: 24,
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Text(
+                    isCorrect ? '정답입니다!' : '다시 시도해주세요',
+                    style: TextStyle(
+                      color: isCorrect
+                          ? TablerColors.success
+                          : TablerColors.danger,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: TablerColors.background,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          '인식된 단어: ',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: TablerColors.textSecondary,
+                          ),
+                        ),
+                        Text(
+                          recognizedWord.isEmpty ? '인식 실패' : recognizedWord,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: TablerColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!isCorrect) ...[
+                    SizedBox(height: 16),
+                    Text(
+                      '정확한 수어 동작을 다시 시도해주세요',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: TablerColors.textSecondary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                if (!isCorrect)
+                  TablerButton(
+                    text: '다시 시도',
+                    outline: true,
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      startCamera();
+                    },
+                  ),
+                if (isCorrect)
+                  TablerButton(
+                    text: '확인',
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                  ),
+              ],
+            ),
+          );
+        }
+
+        // 정답이면 다음 페이지로 이동
+        if (isCorrect) {
+          await Future.delayed(Duration(milliseconds: 500));
+          if (pageIndex < widget.items.length - 1) {
+            pageCtrl.nextPage(
+              duration: Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+          } else {
+            await onNext();
+          }
+        }
+      } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('수집된 프레임이 없습니다. 다시 시도해주세요.'),
-              backgroundColor: TablerColors.warning,
+              content: Text('번역 결과를 가져올 수 없습니다'),
+              backgroundColor: TablerColors.danger,
             ),
           );
         }
-        return;
       }
-
-      // 프레임들을 base64로 인코딩하여 서버로 전송
-      final List<String> base64Frames = collectedFrames
-          .map((frame) => base64Encode(frame))
-          .toList();
-
-      // 서버로 프레임 전송
-      final sendResult = await TranslateApi.sendFrames(base64Frames);
-      print('프레임 전송 결과: $sendResult');
-
-      if (sendResult == null) {
-        throw Exception('프레임 전송 실패');
-      }
-
-      // 잠시 대기 후 번역 결과 가져오기
-      await Future.delayed(Duration(seconds: 2));
-      final translateResult = await TranslateApi.translateLatest2();
-
-      if (translateResult == null) {
-        throw Exception('번역 결과를 가져올 수 없습니다');
-      }
-
-      final recognizedWord = translateResult['korean'] ?? '';
-      final isCorrect =
-          recognizedWord.toLowerCase().trim() == expected.toLowerCase().trim();
-
-      if (mounted) {
-        await showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => AlertDialog(
-            backgroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            title: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color:
-                        (isCorrect ? TablerColors.success : TablerColors.danger)
-                            .withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Icon(
-                    isCorrect ? Icons.check_circle : Icons.cancel,
-                    color: isCorrect
-                        ? TablerColors.success
-                        : TablerColors.danger,
-                    size: 24,
-                  ),
-                ),
-                SizedBox(width: 12),
-                Text(
-                  isCorrect ? '정답입니다!' : '다시 시도해주세요',
-                  style: TextStyle(
-                    color: isCorrect
-                        ? TablerColors.success
-                        : TablerColors.danger,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: TablerColors.background,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Text(
-                        '인식된 단어: ',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: TablerColors.textSecondary,
-                        ),
-                      ),
-                      Text(
-                        recognizedWord.isEmpty ? '인식 실패' : recognizedWord,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: TablerColors.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (!isCorrect) ...[
-                  SizedBox(height: 16),
-                  Text(
-                    '정확한 수어 동작을 다시 시도해주세요',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: TablerColors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              if (!isCorrect)
-                TablerButton(
-                  text: '다시 시도',
-                  outline: true,
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    setState(() => showCamera = true);
-                  },
-                ),
-              if (isCorrect)
-                TablerButton(
-                  text: '확인',
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                ),
-            ],
-          ),
-        );
-      }
-
-      // 정답이면 다음 페이지로 이동
-      if (isCorrect) {
-        await Future.delayed(Duration(milliseconds: 500));
-        if (pageIndex < widget.items.length - 1) {
-          pageCtrl.nextPage(
-            duration: Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-          );
-        } else {
-          await onNext();
-        }
-      }
-
-      // 분석 완료 후 프레임 정리
-      collectedFrames.clear();
     } catch (e) {
       print('분석 오류: $e');
       if (mounted) {
@@ -273,12 +518,6 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
         );
       }
     }
-  }
-
-  @override
-  void dispose() {
-    pageCtrl.dispose();
-    super.dispose();
   }
 
   @override
@@ -334,6 +573,10 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
               onPageChanged: (idx) {
                 setState(() => pageIndex = idx);
                 loadAnimationFrames(widget.items[idx]);
+                // 페이지 변경 시 카메라 중지
+                if (isCameraOn) {
+                  stopCamera();
+                }
               },
               itemBuilder: (_, i) {
                 return SingleChildScrollView(
@@ -603,92 +846,106 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
           ),
         ),
         SizedBox(height: 12),
-        Container(
+
+        // 카메라 영역
+        SizedBox(
           width: double.infinity,
           height: cameraHeight,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: TablerColors.border, width: 2),
-          ),
-          child: showCamera
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: CameraWidget(
-                    continuousMode: true,
-                    onFinish: (file) {
-                      // 5초 후 자동으로 카메라 종료
-                      setState(() => showCamera = false);
-                    },
-                    onFramesAvailable: (frames) {
-                      // 수집된 프레임들을 저장
-                      setState(() {
-                        collectedFrames = List.from(frames);
-                      });
-                    },
-                  ),
-                )
-              : Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: TablerColors.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(32),
-                          border: Border.all(
-                            color: TablerColors.primary.withOpacity(0.3),
-                            width: 2,
+          child: AnimatedContainer(
+            duration: Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: _cameraBorderColor,
+                width: _cameraBorderWidth,
+              ),
+              boxShadow: isCameraOn
+                  ? [
+                      BoxShadow(
+                        color: _cameraBorderColor.withOpacity(0.3),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : [],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                decoration: BoxDecoration(color: Colors.black),
+                child:
+                    isCameraOn && cameraController?.value.isInitialized == true
+                    ? Stack(
+                        children: [
+                          // 카메라 프리뷰
+                          Positioned.fill(
+                            child: CameraPreview(cameraController!),
                           ),
-                        ),
-                        child: Icon(
-                          Icons.videocam,
-                          size: 32,
-                          color: TablerColors.primary,
+                        ],
+                      )
+                    : Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(
+                                color: TablerColors.primary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(32),
+                                border: Border.all(
+                                  color: TablerColors.primary.withOpacity(0.3),
+                                  width: 2,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.videocam,
+                                size: 32,
+                                color: TablerColors.primary,
+                              ),
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              '카메라로 수어 연습하기',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: TablerColors.textPrimary,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              '아래 버튼을 눌러 카메라를 시작하세요',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: TablerColors.textSecondary,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
                         ),
                       ),
-                      SizedBox(height: 12),
-                      Text(
-                        '카메라로 수어 연습하기',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: TablerColors.textPrimary,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        '아래 버튼을 눌러 카메라를 시작하세요',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: TablerColors.textSecondary,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
+              ),
+            ),
+          ),
         ),
-        SizedBox(height: 16),
+        SizedBox(height: 12),
+
         SizedBox(
           width: double.infinity,
           child: TablerButton(
-            text: showCamera ? '카메라 중지' : '카메라 시작',
-            icon: showCamera ? Icons.videocam_off : Icons.videocam,
-            outline: showCamera,
-            type: showCamera
-                ? TablerButtonType.danger
-                : TablerButtonType.primary,
+            text: isCameraOn ? '분석하기' : '카메라 시작',
+            icon: isCameraOn ? Icons.analytics : Icons.videocam,
+            outline: !isCameraOn,
             onPressed: () async {
-              if (showCamera) {
-                // 카메라 중지 시 분석 실행
+              if (isCameraOn) {
+                // 카메라가 켜져 있으면 분석 실행
                 await _analyzeFrames();
               } else {
-                // 카메라 시작 시 프레임 초기화
-                collectedFrames.clear();
+                // 카메라 시작
+                await startCamera();
               }
-              setState(() => showCamera = !showCamera);
             },
           ),
         ),

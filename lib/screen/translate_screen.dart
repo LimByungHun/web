@@ -46,6 +46,9 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   String? resultChinese;
   String? lastShownword;
 
+  // 누적 인식 결과들
+  List<String> recognizedWords = [];
+
   final GlobalKey<AnimationWidgetState> animationKey =
       GlobalKey<AnimationWidgetState>();
   List<Uint8List> decodedFrames = [];
@@ -60,21 +63,13 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   String frameStatus = '';
   bool isCollectingFrames = false;
 
-  // 존재 감지
-  bool isSubjectPresent = false;
-  int? lastFrameSample;
-  int presenceScore = 0;
-  static const int presenceScoreEnter = 60;
-  static const int presenceScoreExit = 30;
-  static const int presenceScoreInc = 12;
-  static const int presenceScoreDecay = 6;
-
   // 프레임 캡처 상태
   bool _isCapturingFrame = false;
 
+  // 카메라 테두리 색상 - 카메라 켜져 있을 때 녹색
   Color get _cameraBorderColor {
     if (!isCameraOn) return TablerColors.border;
-    return isSubjectPresent ? TablerColors.success : TablerColors.danger;
+    return TablerColors.success; // 카메라 켜져 있을 때 녹색
   }
 
   double get _cameraBorderWidth => isCameraOn ? 3 : 2;
@@ -108,51 +103,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       default:
         return resultKorean;
     }
-  }
-
-  // 프레임 샘플링
-  int _computeSample(Uint8List bytes) {
-    int sum = 0;
-    final int step = bytes.length > 200000 ? 400 : 200;
-    for (int i = 0; i < bytes.length; i += step) {
-      sum += bytes[i];
-    }
-    return sum;
-  }
-
-  // 존재 감지 업데이트
-  void _updatePresence(Uint8List bytes) {
-    final int sample = _computeSample(bytes);
-
-    if (lastFrameSample != null) {
-      final int diff = (sample - lastFrameSample!).abs();
-      final int step = bytes.length > 200000 ? 400 : 200;
-      final int samples = (bytes.length + step - 1) ~/ step;
-      final int dynamicThreshold = samples * 8;
-
-      final bool hasMotion = diff > dynamicThreshold;
-      if (hasMotion) {
-        presenceScore = (presenceScore + presenceScoreInc).clamp(0, 100);
-      } else {
-        presenceScore = (presenceScore - presenceScoreDecay).clamp(0, 100);
-      }
-
-      final bool enter = presenceScore >= presenceScoreEnter;
-      final bool exit = presenceScore <= presenceScoreExit;
-
-      bool changed = false;
-      if (enter && !isSubjectPresent) {
-        isSubjectPresent = true;
-        changed = true;
-      } else if (exit && isSubjectPresent) {
-        isSubjectPresent = false;
-        changed = true;
-      }
-
-      if (changed && mounted) setState(() {});
-    }
-
-    lastFrameSample = sample;
   }
 
   // 서버 전송 함수
@@ -191,7 +141,11 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
       setState(() {
         lastShownword = korean;
-        resultKorean = korean;
+        // 새로운 단어를 누적 리스트에 추가
+        if (!recognizedWords.contains(korean)) {
+          recognizedWords.add(korean);
+        }
+        resultKorean = recognizedWords.join(' '); // 모든 인식된 단어를 연결
         resultEnglish = (res['english'] as String?) ?? '';
         resultJapanese = (res['japanese'] as String?) ?? '';
         resultChinese = (res['chinese'] as String?) ?? '';
@@ -238,9 +192,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         final bytes = await picture.readAsBytes();
 
         Uint8List processedBytes = bytes; // 기본값은 원본
-
-        // 존재 감지 업데이트
-        _updatePresence(processedBytes);
 
         // 프레임 버퍼 관리
         if (frameBuffer.length >= maxBuffer) {
@@ -297,6 +248,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       // 이전 결과 초기화
       setState(() {
         lastShownword = null;
+        recognizedWords.clear(); // 누적 결과 초기화
         frameStatus = "카메라 초기화 중...";
       });
 
@@ -420,7 +372,8 @@ class TranslateScreenWebState extends State<TranslateScreen> {
             setState(() {
               if (korean != lastShownword) {
                 lastShownword = korean;
-                resultKorean = korean;
+                // 최종 결과는 누적하지 않고 단일 결과만 표시
+                resultKorean = korean; // 누적 대신 단일 결과
                 resultEnglish = result['english'] ?? '';
                 resultJapanese = result['japanese'] ?? '';
                 resultChinese = result['chinese'] ?? '';
@@ -490,6 +443,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     isCollectingFrames = false;
     frameBuffer.clear();
     lastShownword = null;
+    recognizedWords.clear(); // 누적 결과도 초기화
   }
 
   Future<void> handleTranslate() async {
@@ -503,21 +457,54 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
         final result = await TranslateApi.translateLatest();
         if (result != null) {
-          setState(() {
-            resultKorean = result['korean'] is List
-                ? (result['korean'] as List).join(' ')
-                : result['korean']?.toString();
-            resultEnglish = result['english'];
-            resultJapanese = result['japanese'];
-            resultChinese = result['chinese'];
-            frameStatus = "";
-          });
+          final korean = result['korean'] is List
+              ? (result['korean'] as List).join(' ')
+              : result['korean']?.toString() ?? '';
 
-          Fluttertoast.showToast(
-            msg: '번역이 완료되었습니다',
-            backgroundColor: TablerColors.success,
-            textColor: Colors.white,
-          );
+          // 결과 필터링 적용
+          if (korean.isNotEmpty &&
+              !korean.contains('인식된 단어가 없습니다') &&
+              !korean.contains('인식 실패') &&
+              !korean.contains('없음') &&
+              !korean.toLowerCase().contains('no word') &&
+              !korean.toLowerCase().contains('unknown')) {
+            setState(() {
+              // 누적된 결과가 있으면 그것을 사용, 없으면 새 결과 사용
+              if (recognizedWords.isNotEmpty) {
+                resultKorean = recognizedWords.join(' ');
+              } else {
+                resultKorean = korean;
+              }
+              resultEnglish = result['english'];
+              resultJapanese = result['japanese'];
+              resultChinese = result['chinese'];
+              frameStatus = "";
+            });
+
+            Fluttertoast.showToast(
+              msg: '번역이 완료되었습니다',
+              backgroundColor: TablerColors.success,
+              textColor: Colors.white,
+            );
+          } else {
+            // 필터링된 경우 기존 누적 결과 유지
+            if (recognizedWords.isNotEmpty) {
+              setState(() {
+                resultKorean = recognizedWords.join(' ');
+                frameStatus = "";
+              });
+              Fluttertoast.showToast(
+                msg: '번역이 완료되었습니다',
+                backgroundColor: TablerColors.success,
+                textColor: Colors.white,
+              );
+            } else {
+              setState(() {
+                frameStatus = "번역 실패";
+              });
+              showTranslationError('번역 결과를 가져올 수 없습니다');
+            }
+          }
         } else {
           setState(() {
             frameStatus = "번역 실패";
@@ -827,28 +814,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         ),
         SizedBox(height: 16),
 
-        // 프레임 상태 표시
-        if (frameStatus.isNotEmpty)
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(8),
-            margin: EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(
-              color: TablerColors.info.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: TablerColors.info.withOpacity(0.3)),
-            ),
-            child: Text(
-              frameStatus,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                color: TablerColors.info,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-
         SizedBox(
           width: double.infinity,
           child: TablerButton(
@@ -1007,12 +972,12 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       );
     }
 
-    // 번역 결과 표시
+    // 번역 결과 표시 - 단일 결과 박스로 통합
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 인식된 결과 표시
+          // 통합된 번역 결과 표시
           Container(
             margin: EdgeInsets.only(bottom: 12),
             padding: EdgeInsets.all(16),
@@ -1026,12 +991,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      Icons.check_circle,
-                      color: TablerColors.success,
-                      size: 16,
-                    ),
-                    SizedBox(width: 6),
                     Text(
                       '인식 결과',
                       style: TextStyle(
@@ -1051,170 +1010,60 @@ class TranslateScreenWebState extends State<TranslateScreen> {
                     color: TablerColors.textPrimary,
                   ),
                 ),
+
+                // 선택된 언어의 번역 결과 (한국어가 아닌 경우)
+                if (selectedLang != '한국어' &&
+                    selectedTranslation() != null &&
+                    selectedTranslation()!.isNotEmpty) ...[
+                  SizedBox(height: 12),
+                  Divider(color: TablerColors.border),
+                  SizedBox(height: 8),
+                  Text(
+                    selectedLang,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: TablerColors.primary,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    selectedTranslation()!,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: TablerColors.textPrimary,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
 
-          // 다국어 번역 결과 (있는 경우)
-          if (isSignToKorean && resultKorean != null) ...[
-            // 선택된 언어의 번역 결과
-            if (selectedTranslation() != null &&
-                selectedTranslation()!.isNotEmpty) ...[
-              Container(
-                margin: EdgeInsets.only(bottom: 12),
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: TablerColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: TablerColors.primary.withOpacity(0.3),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      selectedLang,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: TablerColors.primary,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      selectedTranslation()!,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: TablerColors.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            // 상태 메시지 (성공 시)
-            if (frameStatus.contains('인식 완료') ||
-                frameStatus.contains('번역 완료')) ...[
-              Container(
-                padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: TablerColors.success.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.check, color: TablerColors.success, size: 16),
-                    SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        frameStatus,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: TablerColors.success,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-
-  // OpenCV 상태 표시
-  Widget buildOpenCVStatus() {
-    final isReady = OpenCVWeb.isAvailable;
-    final isProcessing = OpenCVWeb.enableProcessing;
-
-    return Container(
-      margin: EdgeInsets.only(bottom: 16),
-      padding: EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: TablerColors.success.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: TablerColors.success.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Icon(Icons.palette, color: TablerColors.success, size: 20),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  isReady && isProcessing
-                      ? ' 컬러 최적화 활성화: 향상된 수어 인식'
-                      : isProcessing
-                      ? ' 컬러 최적화 로딩 중...'
-                      : ' 기본 모드 (처리 비활성화)',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: TablerColors.success,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          // 처리 상세 정보
-          if (isReady && isProcessing) ...[
-            SizedBox(height: 8),
+          // 상태 메시지 (성공 시)
+          if (frameStatus.contains('인식 완료') ||
+              frameStatus.contains('번역 완료')) ...[
             Container(
               padding: EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: TablerColors.info.withOpacity(0.1),
+                color: TablerColors.success.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.auto_fix_high, size: 14, color: TablerColors.info),
+                  Icon(Icons.check, color: TablerColors.success, size: 16),
                   SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '컬러 정보 보존 • 노이즈 제거 • 대비 향상 • 선명도 개선',
-                      style: TextStyle(fontSize: 11, color: TablerColors.info),
+                      frameStatus,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: TablerColors.success,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
-
-          // 로딩 중일 때 재시도 버튼
-          if (isProcessing && !isReady) ...[
-            SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'OpenCV 로딩 중... 완료 후 컬러 최적화가 적용됩니다.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: TablerColors.textSecondary,
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    setState(() {
-                      frameStatus = "OpenCV 재로딩 중...";
-                    });
-                    await OpenCVWeb.forceReinitialize();
-                    setState(() {});
-                  },
-                  child: Text(
-                    '재시도',
-                    style: TextStyle(fontSize: 11, color: TablerColors.primary),
-                  ),
-                ),
-              ],
             ),
           ],
         ],
