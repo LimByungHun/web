@@ -26,7 +26,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
   // 프레임 처리
   final List<Uint8List> frameBuffer = [];
-  static const int batchSize = 45;
+  static const int batchSize = 20;
   static const int maxBuffer = 120;
   bool busy = false;
 
@@ -223,7 +223,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   void _startFrameCapture() {
     frameTimer?.cancel();
     forcestop = false;
-    frameTimer = Timer.periodic(const Duration(milliseconds: 111), (
+    frameTimer = Timer.periodic(const Duration(milliseconds: 33), (
       timer,
     ) async {
       if (forcestop ||
@@ -331,7 +331,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         front,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420,
+        imageFormatGroup: ImageFormatGroup.jpeg,
       );
 
       await cameraController!.initialize();
