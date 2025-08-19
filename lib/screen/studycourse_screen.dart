@@ -66,6 +66,7 @@ class StudycourseScreenState extends State<StudycourseScreen> {
 
       final steps = List<Map<String, dynamic>>.from(detail['steps']);
 
+      if (!mounted) return;
       context.read<CourseModel>().selectCourse(
         course: courseName,
         sid: detail['sid'],
@@ -229,7 +230,6 @@ class StudycourseScreenState extends State<StudycourseScreen> {
       itemCount: studyList.length + 1,
       separatorBuilder: (context, index) => SizedBox(height: 12),
       itemBuilder: (context, index) {
-        // 실제 코스 아이템 렌더링
         if (index < studyList.length) {
           final course = studyList[index];
           final isSelected = selectedCourseIndex == index;

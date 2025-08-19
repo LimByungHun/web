@@ -13,10 +13,10 @@ class Bookmark extends StatefulWidget {
   const Bookmark({super.key});
 
   @override
-  State<Bookmark> createState() => _BookmarkState();
+  State<Bookmark> createState() => BookmarkState();
 }
 
-class _BookmarkState extends State<Bookmark> {
+class BookmarkState extends State<Bookmark> {
   Map<String, int> wordIdMap = {};
   List<String> filteredWords = [];
   final Set<String> bookmarked = {};

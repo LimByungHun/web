@@ -38,40 +38,31 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
   final GlobalKey<AnimationWidgetState> animationKey = GlobalKey();
   List<Uint8List>? base64Frames;
 
-  // TranslateScreen의 카메라 기능 복사
   bool isCameraOn = false;
   CameraController? cameraController;
 
-  // 프레임 처리
   final List<Uint8List> frameBuffer = [];
   static const int batchSize = 20;
   static const int maxBuffer = 120;
   bool forcestop = false;
-
-  // 전송 큐
   Future<void> sendQueue = Future.value();
-
-  // 상태 표시
   String frameStatus = '';
   bool isCollectingFrames = false;
+  bool isCapturingFrame = false;
 
-  // 프레임 캡처 상태
-  bool _isCapturingFrame = false;
-
-  // 웹 전용 프레임 캡처 타이머
+  // 프레임 캡처 타이머
   Timer? frameTimer;
 
-  // 누적 인식 결과들
   List<String> recognizedWords = [];
   String? lastShownword;
 
   // 카메라 테두리 색상
-  Color get _cameraBorderColor {
+  Color get cameraBorderColor {
     if (!isCameraOn) return TablerColors.border;
     return TablerColors.success; // 카메라 켜져 있을 때 녹색
   }
 
-  double get _cameraBorderWidth => isCameraOn ? 3 : 2;
+  double get cameraBorderWidth => isCameraOn ? 3 : 2;
 
   @override
   void initState() {
@@ -83,7 +74,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
   @override
   void dispose() {
     forcestop = true;
-    _stopFrameCapture();
+    stopFrameCapture();
     stopCamera();
     pageCtrl.dispose();
     super.dispose();
@@ -104,22 +95,18 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
         print("학습 완료 저장 실패: $e");
       }
 
-      // 현재 context가 위젯 트리에서 여전히 살아있는지 확인
       if (!mounted) return;
 
-      // 혹시 다이얼로그가 떠 있었으면 먼저 닫고 약간 대기
       if (Navigator.canPop(context)) {
-        Navigator.of(context).pop(); // 다이얼로그 닫기
+        Navigator.of(context).pop();
         await Future.delayed(const Duration(milliseconds: 300));
       }
 
-      // 상위 StudyScreen의 상태 접근해서 nextStep 호출
       final screenState = context.findAncestorStateOfType<StudyScreenState>();
       if (screenState != null) {
         await Future.delayed(const Duration(milliseconds: 100));
         screenState.nextStep(); // 여기서 GoRouter로 이동 처리됨
       } else {
-        // 아니면 직접 홈으로 이동
         await Future.delayed(const Duration(milliseconds: 100));
         if (mounted) {
           GoRouter.of(context).go('/home');
@@ -142,7 +129,6 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
     setState(() => isLoading = false);
   }
 
-  // TranslateScreen의 프레임 전송 함수 복사
   Future<void> sendFrames(List<Uint8List> frames) async {
     try {
       debugPrint("프레임 ${frames.length}개 서버로 전송 시도...");
@@ -154,10 +140,8 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
         return;
       }
 
-      // 한국어 결과 필터링 및 처리
       final String korean = (res['korean'] as String? ?? '').trim();
 
-      // 필터링: 빈 문자열이거나 "인식된 단어가 없습니다" 메시지는 무시
       if (korean.isEmpty ||
           korean.contains('인식된 단어가 없습니다') ||
           korean.contains('인식 실패') ||
@@ -168,7 +152,6 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
         return;
       }
 
-      // 중복 방지: 이전과 같은 결과면 무시
       if (korean == lastShownword) {
         debugPrint('중복 결과 무시: $korean');
         return;
@@ -178,14 +161,11 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
 
       setState(() {
         lastShownword = korean;
-        // 새로운 단어를 누적 리스트에 추가
         if (!recognizedWords.contains(korean)) {
           recognizedWords.add(korean);
         }
         frameStatus = '인식 완료: $korean';
       });
-
-      // 성공 시 잠시 상태 유지 후 기본 상태로 복원
       Future.delayed(Duration(seconds: 2), () {
         if (mounted && isCameraOn) {
           setState(() {
@@ -202,12 +182,12 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
   }
 
   // 전송 직렬화
-  void _enqueueSend(List<Uint8List> frames) {
+  void enqueueSend(List<Uint8List> frames) {
     sendQueue = sendQueue.then((_) => sendFrames(frames));
   }
 
   // 프레임 캡처
-  void _startFrameCapture() {
+  void startFrameCapture() {
     frameTimer?.cancel();
     forcestop = false;
     frameTimer = Timer.periodic(const Duration(milliseconds: 33), (
@@ -216,28 +196,25 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
       if (forcestop ||
           !isCameraOn ||
           cameraController == null ||
-          _isCapturingFrame)
+          isCapturingFrame)
         return;
 
-      _isCapturingFrame = true;
+      isCapturingFrame = true;
       try {
         final picture = await cameraController!.takePicture();
         final bytes = await picture.readAsBytes();
 
-        // 프레임 버퍼 관리
         if (frameBuffer.length >= maxBuffer) {
           final int drop = frameBuffer.length - maxBuffer + 1;
           frameBuffer.removeRange(0, drop);
         }
         frameBuffer.add(bytes);
 
-        // 배치 전송 및 상태 업데이트
         if (frameBuffer.length >= batchSize) {
           final chunk = List<Uint8List>.from(frameBuffer.take(batchSize));
           frameBuffer.removeRange(0, batchSize);
-          _enqueueSend(chunk);
+          enqueueSend(chunk);
         } else {
-          // 프레임 수집 중 상태 (덜 자주 업데이트)
           if (mounted && frameBuffer.length % 15 == 0) {
             setState(() {
               frameStatus = "프레임 수집 중... (${frameBuffer.length}/$batchSize)";
@@ -253,21 +230,20 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
           });
         }
       } finally {
-        _isCapturingFrame = false;
+        isCapturingFrame = false;
       }
     });
   }
 
-  void _stopFrameCapture() {
+  void stopFrameCapture() {
     forcestop = true;
     frameTimer?.cancel();
     frameTimer = null;
-    _isCapturingFrame = false;
+    isCapturingFrame = false;
   }
 
   Future<void> startCamera() async {
     try {
-      // 이전 결과 초기화
       setState(() {
         lastShownword = null;
         recognizedWords.clear();
@@ -293,8 +269,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
 
       await cameraController!.initialize();
 
-      // 프레임 캡처 시작
-      _startFrameCapture();
+      startFrameCapture();
 
       setState(() {
         isCameraOn = true;
@@ -318,14 +293,12 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
       isCameraOn = false;
     });
 
-    _stopFrameCapture();
+    stopFrameCapture();
 
-    // 전송 큐 대기
     try {
       await sendQueue;
     } catch (_) {}
 
-    // 잔여 프레임이 있으면 전송
     if (frameBuffer.isNotEmpty) {
       try {
         final leftover = List<Uint8List>.from(frameBuffer);
@@ -356,19 +329,18 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
     }
   }
 
-  Future<void> _analyzeFrames() async {
+  Future<void> analyzeFrames() async {
     try {
       final expected = widget.items[pageIndex];
 
-      // 카메라를 먼저 중지
       await stopCamera();
 
-      // 최종 번역 결과 확인
+      // 최종 번역 결과
       setState(() {
         frameStatus = "번역 결과 확인 중...";
       });
 
-      final result = await TranslateApi.translateLatest();
+      final result = await TranslateApi.translateLatest2();
       if (result != null) {
         final recognizedWord = result['korean'] is List
             ? (result['korean'] as List).join(' ')
@@ -573,7 +545,6 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
               onPageChanged: (idx) {
                 setState(() => pageIndex = idx);
                 loadAnimationFrames(widget.items[idx]);
-                // 페이지 변경 시 카메라 중지
                 if (isCameraOn) {
                   stopCamera();
                 }
@@ -636,20 +607,20 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
                                       children: [
                                         Expanded(
                                           flex: 1,
-                                          child: _buildVideoSection(),
+                                          child: buildVideoSection(),
                                         ),
                                         SizedBox(width: 24),
                                         Expanded(
                                           flex: 1,
-                                          child: _buildCameraSection(),
+                                          child: buildCameraSection(),
                                         ),
                                       ],
                                     )
                                   : Column(
                                       children: [
-                                        _buildVideoSection(),
+                                        buildVideoSection(),
                                         SizedBox(height: 20),
-                                        _buildCameraSection(),
+                                        buildCameraSection(),
                                       ],
                                     ),
                             ),
@@ -703,7 +674,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
     );
   }
 
-  Widget _buildVideoSection() {
+  Widget buildVideoSection() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth > 900;
     final videoHeight = isWide ? 400.0 : 300.0;
@@ -830,7 +801,7 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
     );
   }
 
-  Widget _buildCameraSection() {
+  Widget buildCameraSection() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth > 900;
     final cameraHeight = isWide ? 400.0 : 300.0;
@@ -857,13 +828,13 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: _cameraBorderColor,
-                width: _cameraBorderWidth,
+                color: cameraBorderColor,
+                width: cameraBorderWidth,
               ),
               boxShadow: isCameraOn
                   ? [
                       BoxShadow(
-                        color: _cameraBorderColor.withOpacity(0.3),
+                        color: cameraBorderColor.withOpacity(0.3),
                         blurRadius: 12,
                         spreadRadius: 1,
                       ),
@@ -878,7 +849,6 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
                     isCameraOn && cameraController?.value.isInitialized == true
                     ? Stack(
                         children: [
-                          // 카메라 프리뷰
                           Positioned.fill(
                             child: CameraPreview(cameraController!),
                           ),
@@ -940,10 +910,8 @@ class GenericStudyWidgetState extends State<GenericStudyWidget> {
             outline: !isCameraOn,
             onPressed: () async {
               if (isCameraOn) {
-                // 카메라가 켜져 있으면 분석 실행
-                await _analyzeFrames();
+                await analyzeFrames();
               } else {
-                // 카메라 시작
                 await startCamera();
               }
             },

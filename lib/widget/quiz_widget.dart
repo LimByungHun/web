@@ -41,7 +41,7 @@ class GenericQuizWidget extends StatefulWidget {
 
 class _GenericQuizWidgetState extends State<GenericQuizWidget> {
   late List<Map<String, dynamic>> quizList;
-  late List<QuizMode> quizModes; // 각 문제별 모드를 저장
+  late List<QuizMode> quizModes;
   int index = 0;
   int correctCount = 0;
 
@@ -57,7 +57,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
   bool isLoading = false;
   final GlobalKey<AnimationWidgetState> animationKey = GlobalKey();
 
-  // TextToSign 모드용 변수들 (TranslateScreen의 카메라 기능 복사)
+  // TextToSign 모드용 변수들
   bool isCameraOn = false;
   CameraController? cameraController;
 
@@ -75,7 +75,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
   bool isCollectingFrames = false;
 
   // 프레임 캡처 상태
-  bool _isCapturingFrame = false;
+  bool isCapturingFrame = false;
 
   // 웹 전용 프레임 캡처 타이머
   Timer? frameTimer;
@@ -89,12 +89,12 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
   String? recognizedWord;
 
   // 카메라 테두리 색상
-  Color get _cameraBorderColor {
+  Color get cameraBorderColor {
     if (!isCameraOn) return TablerColors.border;
-    return TablerColors.success; // 카메라 켜져 있을 때 녹색
+    return TablerColors.success;
   }
 
-  double get _cameraBorderWidth => isCameraOn ? 3 : 2;
+  double get cameraBorderWidth => isCameraOn ? 3 : 2;
 
   @override
   void initState() {
@@ -105,7 +105,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
   @override
   void dispose() {
     forcestop = true;
-    _stopFrameCapture();
+    stopFrameCapture();
     stopCamera();
     super.dispose();
   }
@@ -128,7 +128,6 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
       (index) => QuizMode.values[DateTime.now().millisecondsSinceEpoch % 2],
     );
 
-    // 더 랜덤하게 섞기
     for (int i = 0; i < quizModes.length; i++) {
       if ((i + DateTime.now().microsecond) % 2 == 0) {
         quizModes[i] = QuizMode.videoToText;
@@ -217,7 +216,6 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
       lastShownword = null;
     });
 
-    // 카메라가 켜져 있으면 중지
     if (isCameraOn) {
       stopCamera();
     }
@@ -242,7 +240,6 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
     });
   }
 
-  // TranslateScreen의 프레임 전송 함수 복사
   Future<void> sendFrames(List<Uint8List> frames) async {
     try {
       debugPrint("프레임 ${frames.length}개 서버로 전송 시도...");
@@ -254,10 +251,8 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
         return;
       }
 
-      // 한국어 결과 필터링 및 처리
       final String korean = (res['korean'] as String? ?? '').trim();
 
-      // 필터링: 빈 문자열이거나 "인식된 단어가 없습니다" 메시지는 무시
       if (korean.isEmpty ||
           korean.contains('인식된 단어가 없습니다') ||
           korean.contains('인식 실패') ||
@@ -268,7 +263,6 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
         return;
       }
 
-      // 중복 방지: 이전과 같은 결과면 무시
       if (korean == lastShownword) {
         debugPrint('중복 결과 무시: $korean');
         return;
@@ -278,14 +272,12 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
 
       setState(() {
         lastShownword = korean;
-        // 새로운 단어를 누적 리스트에 추가
         if (!recognizedWords.contains(korean)) {
           recognizedWords.add(korean);
         }
         frameStatus = '인식 완료: $korean';
       });
 
-      // 성공 시 잠시 상태 유지 후 기본 상태로 복원
       Future.delayed(Duration(seconds: 2), () {
         if (mounted && isCameraOn) {
           setState(() {
@@ -301,13 +293,12 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
     }
   }
 
-  // 전송 직렬화
-  void _enqueueSend(List<Uint8List> frames) {
+  void enqueueSend(List<Uint8List> frames) {
     sendQueue = sendQueue.then((_) => sendFrames(frames));
   }
 
   // 프레임 캡처
-  void _startFrameCapture() {
+  void startFrameCapture() {
     frameTimer?.cancel();
     forcestop = false;
     frameTimer = Timer.periodic(const Duration(milliseconds: 33), (
@@ -316,28 +307,25 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
       if (forcestop ||
           !isCameraOn ||
           cameraController == null ||
-          _isCapturingFrame)
+          isCapturingFrame)
         return;
 
-      _isCapturingFrame = true;
+      isCapturingFrame = true;
       try {
         final picture = await cameraController!.takePicture();
         final bytes = await picture.readAsBytes();
 
-        // 프레임 버퍼 관리
         if (frameBuffer.length >= maxBuffer) {
           final int drop = frameBuffer.length - maxBuffer + 1;
           frameBuffer.removeRange(0, drop);
         }
         frameBuffer.add(bytes);
 
-        // 배치 전송 및 상태 업데이트
         if (frameBuffer.length >= batchSize) {
           final chunk = List<Uint8List>.from(frameBuffer.take(batchSize));
           frameBuffer.removeRange(0, batchSize);
-          _enqueueSend(chunk);
+          enqueueSend(chunk);
         } else {
-          // 프레임 수집 중 상태 (덜 자주 업데이트)
           if (mounted && frameBuffer.length % 15 == 0) {
             setState(() {
               frameStatus = "프레임 수집 중... (${frameBuffer.length}/$batchSize)";
@@ -353,21 +341,20 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
           });
         }
       } finally {
-        _isCapturingFrame = false;
+        isCapturingFrame = false;
       }
     });
   }
 
-  void _stopFrameCapture() {
+  void stopFrameCapture() {
     forcestop = true;
     frameTimer?.cancel();
     frameTimer = null;
-    _isCapturingFrame = false;
+    isCapturingFrame = false;
   }
 
   Future<void> startCamera() async {
     try {
-      // 이전 결과 초기화
       setState(() {
         lastShownword = null;
         recognizedWords.clear();
@@ -393,8 +380,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
 
       await cameraController!.initialize();
 
-      // 프레임 캡처 시작
-      _startFrameCapture();
+      startFrameCapture();
 
       setState(() {
         isCameraOn = true;
@@ -418,14 +404,12 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
       isCameraOn = false;
     });
 
-    _stopFrameCapture();
+    stopFrameCapture();
 
-    // 전송 큐 대기
     try {
       await sendQueue;
     } catch (_) {}
 
-    // 잔여 프레임이 있으면 전송
     if (frameBuffer.isNotEmpty) {
       try {
         final leftover = List<Uint8List>.from(frameBuffer);
@@ -456,10 +440,8 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
     }
   }
 
-  // TextToSign 모드에서 카메라 프레임 처리
   Future<void> handleCameraAnalysis() async {
     try {
-      // 카메라를 먼저 중지
       await stopCamera();
 
       setState(() {
@@ -467,7 +449,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
       });
 
       // 최종 번역 결과 확인
-      final result = await TranslateApi.translateLatest();
+      final result = await TranslateApi.translateLatest2();
       if (result != null) {
         final recognized = result['korean'] is List
             ? (result['korean'] as List).join(' ')
@@ -586,7 +568,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
   @override
   Widget build(BuildContext context) {
     if (quizList.isEmpty) {
-      return _buildEmptyState();
+      return buildEmptyState();
     }
 
     final screenWidth = MediaQuery.of(context).size.width;
@@ -594,7 +576,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
 
     return Scaffold(
       backgroundColor: TablerColors.background,
-      appBar: widget.showAppBar ? _buildAppBar() : null,
+      appBar: widget.showAppBar ? buildAppBar() : null,
       body: SafeArea(
         child: SingleChildScrollView(
           child: ConstrainedBox(
@@ -612,11 +594,11 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
                   padding: EdgeInsets.all(isDesktop ? 32 : 16),
                   child: Column(
                     children: [
-                      _buildProgress(),
+                      buildProgress(),
                       SizedBox(height: 24),
                       currentMode == QuizMode.videoToText
-                          ? _buildVideoToTextContent(isDesktop)
-                          : _buildTextToSignContent(isDesktop),
+                          ? buildVideoToTextContent(isDesktop)
+                          : buildTextToSignContent(isDesktop),
                     ],
                   ),
                 ),
@@ -628,10 +610,10 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget buildEmptyState() {
     return Scaffold(
       backgroundColor: TablerColors.background,
-      appBar: widget.showAppBar ? _buildAppBar() : null,
+      appBar: widget.showAppBar ? buildAppBar() : null,
       body: Center(
         child: TablerCard(
           padding: EdgeInsets.all(24),
@@ -663,7 +645,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget buildAppBar() {
     return AppBar(
       title: Text('퀴즈'),
       backgroundColor: Colors.white,
@@ -672,7 +654,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
     );
   }
 
-  Widget _buildProgress() {
+  Widget buildProgress() {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.symmetric(vertical: 16),
@@ -749,8 +731,8 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
     );
   }
 
-  // VideoToText 모드 콘텐츠
-  Widget _buildVideoToTextContent(bool isDesktop) {
+  // VideoToText 모드
+  Widget buildVideoToTextContent(bool isDesktop) {
     return Container(
       width: double.infinity,
       constraints: BoxConstraints(
@@ -933,8 +915,8 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
     );
   }
 
-  // TextToSign 모드 콘텐츠
-  Widget _buildTextToSignContent(bool isDesktop) {
+  // TextToSign 모드
+  Widget buildTextToSignContent(bool isDesktop) {
     return Container(
       width: double.infinity,
       constraints: BoxConstraints(
@@ -987,13 +969,13 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: _cameraBorderColor,
-                    width: _cameraBorderWidth,
+                    color: cameraBorderColor,
+                    width: cameraBorderWidth,
                   ),
                   boxShadow: isCameraOn
                       ? [
                           BoxShadow(
-                            color: _cameraBorderColor.withOpacity(0.3),
+                            color: cameraBorderColor.withOpacity(0.3),
                             blurRadius: 12,
                             spreadRadius: 1,
                           ),
@@ -1009,7 +991,6 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
                             cameraController?.value.isInitialized == true
                         ? Stack(
                             children: [
-                              // 카메라 프리뷰
                               Positioned.fill(
                                 child: CameraPreview(cameraController!),
                               ),
@@ -1060,16 +1041,16 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
 
             SizedBox(height: 20),
 
-            if (isLastAnswerCorrect != null) _buildResultDisplay(),
+            if (isLastAnswerCorrect != null) buildResultDisplay(),
 
-            _buildTextToSignControls(),
+            buildTextToSignControls(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildResultDisplay() {
+  Widget buildResultDisplay() {
     final isCorrect = isLastAnswerCorrect == true;
     return Container(
       width: double.infinity,
@@ -1122,7 +1103,7 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
     );
   }
 
-  Widget _buildTextToSignControls() {
+  Widget buildTextToSignControls() {
     return Column(
       children: [
         SizedBox(
@@ -1136,10 +1117,8 @@ class _GenericQuizWidgetState extends State<GenericQuizWidget> {
                 : TablerButtonType.primary,
             onPressed: () async {
               if (isCameraOn) {
-                // 카메라가 켜져 있으면 분석 실행
                 await handleCameraAnalysis();
               } else {
-                // 카메라 시작
                 await startCamera();
               }
             },
