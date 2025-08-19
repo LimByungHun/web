@@ -7,7 +7,6 @@ import 'package:sign_web/widget/sidebar_widget.dart';
 import 'package:sign_web/theme/tabler_theme.dart';
 import 'package:sign_web/widget/tablerui_widget.dart';
 
-// DayRecordsResult class (instead of Record type)
 class DayRecordsResult {
   final String date;
   final List<DayRecordItem> items;
@@ -44,10 +43,10 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCalendarData();
+    loadCalendarData();
   }
 
-  Future<void> _loadCalendarData() async {
+  Future<void> loadCalendarData() async {
     try {
       final stats = await CalendarApi.fetchLearnedDates();
       setState(() {
@@ -72,11 +71,9 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
     });
 
     try {
-      // CalendarApi.fetchDayRecords returns Record type
       final result = await CalendarApi.fetchDayRecords(day);
       if (!mounted) return;
 
-      // Destructure the Record type
       final (date: resultDate, items: resultItems) = result;
 
       setState(() {
@@ -98,7 +95,7 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
     }
   }
 
-  void _navigateMonth(int direction) {
+  void navigateMonth(int direction) {
     setState(() {
       focusedDay = DateTime(focusedDay.year, focusedDay.month + direction, 1);
     });
@@ -128,15 +125,14 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Header
-                          _buildHeader(),
+                          buildHeader(),
                           SizedBox(height: 24),
 
                           // Main content
                           if (isDesktop)
-                            _buildDesktopLayout()
+                            buildDesktopLayout()
                           else
-                            _buildTabletLayout(),
+                            buildTabletLayout(),
                         ],
                       ),
                     ),
@@ -150,7 +146,7 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget buildHeader() {
     return Row(
       children: [
         Container(
@@ -193,55 +189,45 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
     );
   }
 
-  Widget _buildDesktopLayout() {
+  Widget buildDesktopLayout() {
     return Column(
       children: [
-        // Top: Calendar and side statistics in one row
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Left stats (best record)
-            Expanded(flex: 1, child: _buildLeftStatCard()),
+            Expanded(flex: 1, child: buildLeftStatCard()),
             SizedBox(width: 24),
-            // Center calendar
-            Expanded(flex: 3, child: _buildCalendarOnlyCard()),
+            Expanded(flex: 3, child: buildCalendarOnlyCard()),
             SizedBox(width: 24),
-            // Right stats (current streak)
-            Expanded(flex: 1, child: _buildRightStatCard()),
+            Expanded(flex: 1, child: buildRightStatCard()),
           ],
         ),
         SizedBox(height: 24),
-        // Bottom: Study records
-        _buildRecordsCard(),
+        buildRecordsCard(),
       ],
     );
   }
 
-  Widget _buildTabletLayout() {
+  Widget buildTabletLayout() {
     return Column(
       children: [
-        // Calendar and side statistics in one row
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Left stats (best record)
-            Expanded(flex: 1, child: _buildLeftStatCard()),
+            Expanded(flex: 1, child: buildLeftStatCard()),
             SizedBox(width: 16),
-            // Center calendar
-            Expanded(flex: 2, child: _buildCalendarOnlyCard()),
+            Expanded(flex: 2, child: buildCalendarOnlyCard()),
             SizedBox(width: 16),
-            // Right stats (current streak)
-            Expanded(flex: 1, child: _buildRightStatCard()),
+            Expanded(flex: 1, child: buildRightStatCard()),
           ],
         ),
         SizedBox(height: 24),
-        // Bottom study records
-        _buildRecordsCard(),
+        buildRecordsCard(),
       ],
     );
   }
 
-  Widget _buildLeftStatCard() {
+  Widget buildLeftStatCard() {
     return TablerCard(
       title: '최고 기록',
       child: Column(
@@ -279,7 +265,7 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
     );
   }
 
-  Widget _buildRightStatCard() {
+  Widget buildRightStatCard() {
     return TablerCard(
       title: '현재 연속',
       child: Column(
@@ -317,11 +303,11 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
     );
   }
 
-  Widget _buildCalendarOnlyCard() {
+  Widget buildCalendarOnlyCard() {
     return TablerCard(
       title: '달력',
       actions: MediaQuery.of(context).size.width < 700
-          ? [] // 화면이 작으면 년/월 표시 박스 완전히 숨김
+          ? []
           : [
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -331,7 +317,7 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
                       Icons.chevron_left,
                       color: TablerColors.textSecondary,
                     ),
-                    onPressed: () => _navigateMonth(-1),
+                    onPressed: () => navigateMonth(-1),
                   ),
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -353,7 +339,7 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
                       Icons.chevron_right,
                       color: TablerColors.textSecondary,
                     ),
-                    onPressed: () => _navigateMonth(1),
+                    onPressed: () => navigateMonth(1),
                   ),
                 ],
               ),
@@ -453,7 +439,7 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
     );
   }
 
-  Widget _buildRecordsCard() {
+  Widget buildRecordsCard() {
     return TablerCard(
       title: selectedDay != null
           ? '${selectedDay!.year}-${selectedDay!.month.toString().padLeft(2, '0')}-${selectedDay!.day.toString().padLeft(2, '0')} 학습 기록'
@@ -582,7 +568,6 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
           padding: EdgeInsets.all(16),
           child: Row(
             children: [
-              // Completion status icon
               Container(
                 width: 40,
                 height: 40,
@@ -602,7 +587,6 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
               ),
               SizedBox(width: 16),
 
-              // Study information
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -629,7 +613,6 @@ class StudycalendarScreenState extends State<StudycalendarScreen> {
                 ),
               ),
 
-              // Time and status
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [

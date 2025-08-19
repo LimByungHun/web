@@ -34,7 +34,6 @@ class DaybarWidget extends StatelessWidget {
       return;
     }
 
-    // 완료된 단계인지 확인
     final completedSteps = courseModel.completedSteps[courseModel.sid] ?? [];
     final isCompleted = completedSteps.contains(stepNumber);
     final isCurrent = stepNumber == currentDay;

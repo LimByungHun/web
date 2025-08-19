@@ -53,26 +53,26 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       GlobalKey<AnimationWidgetState>();
   List<Uint8List> decodedFrames = [];
 
-  // 웹 전용 프레임 캡처 타이머
+  // 프레임 캡처 타이머
   Timer? frameTimer;
 
-  // 실시간 번역 폴링
-  Timer? _recognitionPollingTimer;
+  // 실시간 번역
+  Timer? recognitionPollingTimer;
 
   // 상태 표시
   String frameStatus = '';
   bool isCollectingFrames = false;
 
   // 프레임 캡처 상태
-  bool _isCapturingFrame = false;
+  bool isCapturingFrame = false;
 
-  // 카메라 테두리 색상 - 카메라 켜져 있을 때 녹색
-  Color get _cameraBorderColor {
+  // 카메라 테두리 색상
+  Color get cameraBorderColor {
     if (!isCameraOn) return TablerColors.border;
-    return TablerColors.success; // 카메라 켜져 있을 때 녹색
+    return TablerColors.success;
   }
 
-  double get _cameraBorderWidth => isCameraOn ? 3 : 2;
+  double get cameraBorderWidth => isCameraOn ? 3 : 2;
 
   @override
   void initState() {
@@ -83,8 +83,8 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   @override
   void dispose() {
     forcestop = true;
-    _stopFrameCapture();
-    _stopRealtimePolling();
+    stopFrameCapture();
+    stopRealtimePolling();
     stopCamera();
     inputController.dispose();
     super.dispose();
@@ -117,10 +117,9 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         return;
       }
 
-      // 한국어 결과 필터링 및 처리
       final String korean = (res['korean'] as String? ?? '').trim();
 
-      // 필터링: 빈 문자열이거나 "인식된 단어가 없습니다" 메시지는 무시
+      // 필터링
       if (korean.isEmpty ||
           korean.contains('인식된 단어가 없습니다') ||
           korean.contains('인식 실패') ||
@@ -131,7 +130,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         return;
       }
 
-      // 중복 방지: 이전과 같은 결과면 무시
       if (korean == lastShownword) {
         debugPrint('중복 결과 무시: $korean');
         return;
@@ -145,14 +143,13 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         if (!recognizedWords.contains(korean)) {
           recognizedWords.add(korean);
         }
-        resultKorean = recognizedWords.join(' '); // 모든 인식된 단어를 연결
+        resultKorean = recognizedWords.join(' ');
         resultEnglish = (res['english'] as String?) ?? '';
         resultJapanese = (res['japanese'] as String?) ?? '';
         resultChinese = (res['chinese'] as String?) ?? '';
         frameStatus = '인식 완료: $korean';
       });
 
-      // 성공 시 잠시 상태 유지 후 기본 상태로 복원
       Future.delayed(Duration(seconds: 2), () {
         if (mounted && isCameraOn) {
           setState(() {
@@ -169,12 +166,11 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   }
 
   // 전송 직렬화
-  void _enqueueSend(List<Uint8List> frames) {
+  void enqueueSend(List<Uint8List> frames) {
     sendQueue = sendQueue.then((_) => sendFrames(frames));
   }
 
-  // 컬러 최적화 프레임 캡처
-  void _startFrameCapture() {
+  void startFrameCapture() {
     frameTimer?.cancel();
     forcestop = false;
     frameTimer = Timer.periodic(const Duration(milliseconds: 33), (
@@ -183,15 +179,15 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       if (forcestop ||
           !isCameraOn ||
           cameraController == null ||
-          _isCapturingFrame)
+          isCapturingFrame)
         return;
 
-      _isCapturingFrame = true;
+      isCapturingFrame = true;
       try {
         final picture = await cameraController!.takePicture();
         final bytes = await picture.readAsBytes();
 
-        Uint8List processedBytes = bytes; // 기본값은 원본
+        Uint8List processedBytes = bytes;
 
         // 프레임 버퍼 관리
         if (frameBuffer.length >= maxBuffer) {
@@ -200,15 +196,13 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         }
         frameBuffer.add(processedBytes);
 
-        // 배치 전송 및 상태 업데이트
         if (frameBuffer.length >= batchSize) {
           final chunk = List<Uint8List>.from(frameBuffer.take(batchSize));
           frameBuffer.removeRange(0, batchSize);
-          _enqueueSend(chunk);
+          enqueueSend(chunk);
         } else {
-          // 프레임 수집 중 상태 (덜 자주 업데이트)
+          // 프레임 수집 중 상태
           if (mounted && frameBuffer.length % 15 == 0) {
-            // 15프레임마다 업데이트
             final processingStatus =
                 OpenCVWeb.enableProcessing && OpenCVWeb.isAvailable ? "" : "";
             setState(() {
@@ -226,29 +220,28 @@ class TranslateScreenWebState extends State<TranslateScreen> {
           });
         }
       } finally {
-        _isCapturingFrame = false;
+        isCapturingFrame = false;
       }
     });
   }
 
-  void _stopFrameCapture() {
+  void stopFrameCapture() {
     forcestop = true;
     frameTimer?.cancel();
     frameTimer = null;
-    _isCapturingFrame = false;
+    isCapturingFrame = false;
   }
 
-  void _stopRealtimePolling() {
-    _recognitionPollingTimer?.cancel();
-    _recognitionPollingTimer = null;
+  void stopRealtimePolling() {
+    recognitionPollingTimer?.cancel();
+    recognitionPollingTimer = null;
   }
 
   Future<void> startCamera() async {
     try {
-      // 이전 결과 초기화
       setState(() {
         lastShownword = null;
-        recognizedWords.clear(); // 누적 결과 초기화
+        recognizedWords.clear();
         frameStatus = "카메라 초기화 중...";
       });
 
@@ -288,8 +281,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
 
       await cameraController!.initialize();
 
-      // 프레임 캡처 시작
-      _startFrameCapture();
+      startFrameCapture();
 
       setState(() {
         isCameraOn = true;
@@ -330,15 +322,13 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       isCameraOn = false;
     });
 
-    _stopFrameCapture();
-    _stopRealtimePolling();
+    stopFrameCapture();
+    stopRealtimePolling();
 
-    // 전송 큐 대기
     try {
       await sendQueue;
     } catch (_) {}
 
-    // 잔여 프레임이 있으면 전송
     if (frameBuffer.isNotEmpty) {
       try {
         final leftover = List<Uint8List>.from(frameBuffer);
@@ -349,7 +339,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       }
     }
 
-    // 카메라 종료 시 최종 번역 결과 한 번만 확인
+    // 카메라 종료 시 최종 번역 결과
     if (isSignToKorean) {
       setState(() {
         frameStatus = "최종 번역 결과 확인 중...";
@@ -362,7 +352,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
               ? (result['korean'] as List).join(' ')
               : result['korean']?.toString() ?? '';
 
-          // 최종 결과도 필터링 적용
           if (korean.isNotEmpty &&
               !korean.contains('인식된 단어가 없습니다') &&
               !korean.contains('인식 실패') &&
@@ -372,8 +361,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
             setState(() {
               if (korean != lastShownword) {
                 lastShownword = korean;
-                // 최종 결과는 누적하지 않고 단일 결과만 표시
-                resultKorean = korean; // 누적 대신 단일 결과
+                resultKorean = korean;
                 resultEnglish = result['english'] ?? '';
                 resultJapanese = result['japanese'] ?? '';
                 resultChinese = result['chinese'] ?? '';
@@ -413,7 +401,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
         isCameraOn = false;
         isCollectingFrames = false;
         if (frameStatus.contains('최종 인식 결과') || frameStatus.contains('다시 시도')) {
-          // 최종 결과 상태는 유지
         } else {
           frameStatus = "";
         }
@@ -443,7 +430,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
     isCollectingFrames = false;
     frameBuffer.clear();
     lastShownword = null;
-    recognizedWords.clear(); // 누적 결과도 초기화
+    recognizedWords.clear();
   }
 
   Future<void> handleTranslate() async {
@@ -461,7 +448,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
               ? (result['korean'] as List).join(' ')
               : result['korean']?.toString() ?? '';
 
-          // 결과 필터링 적용
           if (korean.isNotEmpty &&
               !korean.contains('인식된 단어가 없습니다') &&
               !korean.contains('인식 실패') &&
@@ -469,7 +455,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
               !korean.toLowerCase().contains('no word') &&
               !korean.toLowerCase().contains('unknown')) {
             setState(() {
-              // 누적된 결과가 있으면 그것을 사용, 없으면 새 결과 사용
               if (recognizedWords.isNotEmpty) {
                 resultKorean = recognizedWords.join(' ');
               } else {
@@ -487,7 +472,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
               textColor: Colors.white,
             );
           } else {
-            // 필터링된 경우 기존 누적 결과 유지
             if (recognizedWords.isNotEmpty) {
               setState(() {
                 resultKorean = recognizedWords.join(' ');
@@ -760,13 +744,13 @@ class TranslateScreenWebState extends State<TranslateScreen> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: _cameraBorderColor,
-                width: _cameraBorderWidth,
+                color: cameraBorderColor,
+                width: cameraBorderWidth,
               ),
               boxShadow: isCameraOn
                   ? [
                       BoxShadow(
-                        color: _cameraBorderColor.withOpacity(0.3),
+                        color: cameraBorderColor.withOpacity(0.3),
                         blurRadius: 12,
                         spreadRadius: 1,
                       ),
@@ -899,7 +883,6 @@ class TranslateScreenWebState extends State<TranslateScreen> {
   }
 
   Widget buildTextResults() {
-    // 프레임 상태가 에러나 로딩이 아닌 경우에만 표시
     if (frameStatus.isNotEmpty &&
         (frameStatus.contains('오류') ||
             frameStatus.contains('로딩') ||
@@ -972,12 +955,11 @@ class TranslateScreenWebState extends State<TranslateScreen> {
       );
     }
 
-    // 번역 결과 표시 - 단일 결과 박스로 통합
+    // 번역 결과 표시
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 통합된 번역 결과 표시
           Container(
             margin: EdgeInsets.only(bottom: 12),
             padding: EdgeInsets.all(16),
@@ -1011,7 +993,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
                   ),
                 ),
 
-                // 선택된 언어의 번역 결과 (한국어가 아닌 경우)
+                // 선택된 언어의 번역 결과
                 if (selectedLang != '한국어' &&
                     selectedTranslation() != null &&
                     selectedTranslation()!.isNotEmpty) ...[
@@ -1039,7 +1021,7 @@ class TranslateScreenWebState extends State<TranslateScreen> {
             ),
           ),
 
-          // 상태 메시지 (성공 시)
+          // 상태 메시지
           if (frameStatus.contains('인식 완료') ||
               frameStatus.contains('번역 완료')) ...[
             Container(

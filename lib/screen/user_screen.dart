@@ -156,7 +156,7 @@ class UserScreenState extends State<UserScreen> {
                 MaterialPageRoute(
                   builder: (context) => const UpdateUserScreen(),
                 ),
-              ).then((_) => loadUserInfo()); // 수정 후 정보 새로고침
+              ).then((_) => loadUserInfo());
             },
           ),
           Divider(color: TablerColors.border, height: 32),
